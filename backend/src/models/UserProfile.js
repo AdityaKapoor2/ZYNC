@@ -64,6 +64,16 @@ const userProfileSchema = new mongoose.Schema({
   },
   lastSeen: {
     type: Date
+  },
+  reputation: {
+    score: { type: Number, default: 0 },
+    count: { type: Number, default: 0 },
+    categories: {
+      communication: { type: Number, default: 0 },
+      teamwork: { type: Number, default: 0 },
+      reliability: { type: Number, default: 0 },
+      sportsmanship: { type: Number, default: 0 }
+    }
   }
 }, { timestamps: true });
 
