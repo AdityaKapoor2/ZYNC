@@ -163,23 +163,45 @@ const Connections = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {connections.map(conn => (
-                <div 
-                  key={conn.connectionId} 
-                  className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl cursor-pointer hover:border-zync-purple transition-all"
-                  onClick={() => navigate(`/player/${conn.user._id}`)}
-                >
-                  <h3 className="text-lg font-bold text-white mb-1">{conn.user.displayName}</h3>
-                  <p className="text-xs text-text-secondary mb-4 uppercase">Connected Squad Member</p>
-                  <div className="flex flex-wrap gap-2">
-                    {conn.user.games?.map(g => (
-                      <span key={g._id} className="text-xs bg-bg-secondary text-text-secondary px-2 py-1 rounded">
-                        {g.gameName} - {g.inGameName}
-                      </span>
-                    ))}
+              {connections.map(conn => {
+                const isOnline = conn.user.isOnline && new Date(conn.user.onlineUntil) > new Date();
+                return (
+                  <div 
+                    key={conn.connectionId} 
+                    className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl flex flex-col justify-between hover:border-zync-purple transition-all"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start mb-1">
+                        <h3 className="text-lg font-bold text-white cursor-pointer hover:text-zync-cyan" onClick={() => navigate(`/player/${conn.user._id}`)}>
+                          {conn.user.displayName}
+                        </h3>
+                        {isOnline ? (
+                          <span className="flex items-center text-xs text-green-400 font-bold tracking-wider">
+                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mr-1"></span>
+                            ONLINE
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500 font-bold tracking-wider">OFFLINE</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-secondary mb-4 uppercase">Connected Squad Member</p>
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {conn.user.games?.map(g => (
+                          <span key={g._id} className="text-xs bg-bg-secondary text-text-secondary px-2 py-1 rounded">
+                            {g.gameName} - {g.inGameName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => navigate(`/chat/${conn.user._id}`)}
+                      className="w-full py-2 rounded font-bold text-sm bg-zync-purple hover:bg-purple-600 text-white transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <span>💬</span> MESSAGE
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

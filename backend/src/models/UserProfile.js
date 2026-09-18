@@ -54,7 +54,17 @@ const userProfileSchema = new mongoose.Schema({
   teams: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Team'
-  }]
+  }],
+  isOnline: {
+    type: Boolean,
+    default: false
+  },
+  onlineUntil: {
+    type: Date
+  },
+  lastSeen: {
+    type: Date
+  }
 }, { timestamps: true });
 
 const UserProfile = mongoose.model('UserProfile', userProfileSchema);

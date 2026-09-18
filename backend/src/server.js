@@ -30,10 +30,16 @@ app.use('/api/profiles', profileRoutes);
 
 import matchRoutes from './routes/matchRoutes.js';
 import connectionRoutes from './routes/connectionRoutes.js';
+import presenceRoutes from './routes/presenceRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 
 // We will import and use other routes here
 app.use('/api/matches', matchRoutes);
 app.use('/api/connections', connectionRoutes);
+app.use('/api/presence', presenceRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/reports', reportRoutes);
 
 const PORT = process.env.PORT || 5000;
 

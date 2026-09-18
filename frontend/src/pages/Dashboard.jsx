@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getProfile } from '../services/api';
+import { getProfile, getPresenceStatus, setOnlineStatus, setOfflineStatus } from '../services/api';
 import zyncLogo from '../assets/zync-logo.jpg';
 
 const Dashboard = () => {
@@ -11,6 +11,12 @@ const Dashboard = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Presence State
+  const [isOnline, setIsOnline] = useState(false);
+  const [onlineUntil, setOnlineUntil] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState('');
+  const [presenceLoading, setPresenceLoading] = useState(false);
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -26,8 +32,13 @@ const Dashboard = () => {
         }
         
         setProfile(data);
+
+        // Fetch presence status
+        const presence = await getPresenceStatus(token);
+        setIsOnline(presence.isOnline);
+        setOnlineUntil(presence.onlineUntil ? new Date(presence.onlineUntil) : null);
       } catch (err) {
-        console.error('Failed to fetch profile', err);
+        console.error('Failed to fetch data', err);
         setError('Failed to load profile data.');
       } finally {
         setLoading(false);
@@ -36,6 +47,55 @@ const Dashboard = () => {
     
     fetchProfileData();
   }, [currentUser, navigate]);
+
+  // Countdown Timer
+  useEffect(() => {
+    if (!isOnline || !onlineUntil) {
+      setTimeRemaining('');
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const now = new Date();
+      const diff = onlineUntil - now;
+      
+      if (diff <= 0) {
+        setIsOnline(false);
+        setOnlineUntil(null);
+        setTimeRemaining('');
+        clearInterval(intervalId);
+      } else {
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        setTimeRemaining(`${minutes}:${seconds < 10 ? '0' : ''}${seconds}`);
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isOnline, onlineUntil]);
+
+  const handleTogglePresence = async () => {
+    if (presenceLoading) return;
+    try {
+      setPresenceLoading(true);
+      const token = await currentUser.getIdToken();
+      if (isOnline) {
+        await setOfflineStatus(token);
+        setIsOnline(false);
+        setOnlineUntil(null);
+        setTimeRemaining('');
+      } else {
+        const res = await setOnlineStatus(token);
+        setIsOnline(res.isOnline);
+        setOnlineUntil(new Date(res.onlineUntil));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update presence status.');
+    } finally {
+      setPresenceLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -121,6 +181,40 @@ const Dashboard = () => {
             </button>
           </div>
         </header>
+
+        {/* Presence Section */}
+        <section className="mb-12">
+          <div className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white mb-1">Online Presence</h2>
+              <p className="text-text-secondary text-sm">
+                {isOnline 
+                  ? "You are visible as online to other players." 
+                  : "Turn on to show teammates you are ready to play."}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              {isOnline && (
+                <div className="text-right mr-4">
+                  <div className="text-zync-cyan font-bold text-lg">{timeRemaining}</div>
+                  <div className="text-xs text-text-secondary uppercase tracking-widest">Remaining</div>
+                </div>
+              )}
+              <button 
+                onClick={handleTogglePresence}
+                disabled={presenceLoading}
+                className={`px-8 py-3 rounded font-bold text-sm uppercase tracking-widest transition-all min-w-[200px] flex justify-center items-center gap-2 ${
+                  isOnline 
+                    ? 'border border-zync-cyan text-zync-cyan hover:bg-zync-cyan/10' 
+                    : 'bg-bg-secondary text-text-secondary hover:text-white border border-border-subtle'
+                } disabled:opacity-50`}
+              >
+                <span className={`w-3 h-3 rounded-full ${isOnline ? 'bg-zync-cyan animate-pulse' : 'bg-gray-500'}`}></span>
+                {isOnline ? "I'm Online" : "I'm Offline"}
+              </button>
+            </div>
+          </div>
+        </section>
 
         {/* Profile Stats */}
         <section className="mb-12">

@@ -8,6 +8,7 @@ import Onboarding from './pages/Onboarding';
 import Discover from './pages/Discover';
 import Connections from './pages/Connections';
 import PlayerProfile from './pages/PlayerProfile';
+import Chat from './pages/Chat';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/discover" element={<Discover />} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/player/:id" element={<PlayerProfile />} />
+          <Route path="/chat/:userId" element={<Chat />} />
         </Routes>
       </Router>
     </AuthProvider>

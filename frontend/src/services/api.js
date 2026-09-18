@@ -72,3 +72,44 @@ export const acceptConnection = async (token, connectionId) => {
 export const rejectConnection = async (token, connectionId) => {
   return fetchWithAuth(`/connections/${connectionId}/reject`, token, { method: 'PUT' });
 };
+
+// PRESENCE
+export const setOnlineStatus = async (token) => {
+  return fetchWithAuth('/presence/online', token, { method: 'POST' });
+};
+
+export const setOfflineStatus = async (token) => {
+  return fetchWithAuth('/presence/offline', token, { method: 'POST' });
+};
+
+export const getPresenceStatus = async (token) => {
+  return fetchWithAuth('/presence/me', token, { method: 'GET' });
+};
+
+// CHAT
+export const getConversations = async (token) => {
+  return fetchWithAuth('/chat/conversations', token, { method: 'GET' });
+};
+
+export const getOrCreateConversation = async (token, targetUserId) => {
+  return fetchWithAuth(`/chat/conversations/${targetUserId}`, token, { method: 'POST' });
+};
+
+export const getMessages = async (token, conversationId) => {
+  return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, { method: 'GET' });
+};
+
+export const sendMessage = async (token, conversationId, text) => {
+  return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, { 
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+};
+
+// REPORT
+export const submitReport = async (token, reportData) => {
+  return fetchWithAuth('/reports', token, {
+    method: 'POST',
+    body: JSON.stringify(reportData)
+  });
+};

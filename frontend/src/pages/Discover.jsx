@@ -163,6 +163,12 @@ const Discover = () => {
                           {match.game}
                         </span>
                         <span className="text-sm text-text-secondary font-medium">IGN: {match.inGameName}</span>
+                        {match.isOnline && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-zync-cyan ml-2 bg-zync-cyan/10 px-2 py-0.5 rounded border border-zync-cyan/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zync-cyan animate-pulse"></span>
+                            ONLINE NOW
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -191,7 +197,7 @@ const Discover = () => {
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Skill</span>
-                        <span className="text-white font-medium">{match.breakdown.skill}/25</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.skill / 25) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
                         <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.skill / 25) * 100}%` }}></div>
@@ -200,7 +206,7 @@ const Discover = () => {
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Role</span>
-                        <span className="text-white font-medium">{match.breakdown.role}/20</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.role / 20) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
                         <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.role / 20) * 100}%` }}></div>
@@ -209,7 +215,7 @@ const Discover = () => {
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Availability</span>
-                        <span className="text-white font-medium">{match.breakdown.availability}/20</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.availability / 20) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
                         <div className="bg-zync-cyan h-1.5 rounded-full" style={{ width: `${(match.breakdown.availability / 20) * 100}%` }}></div>
@@ -218,7 +224,7 @@ const Discover = () => {
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Playstyle</span>
-                        <span className="text-white font-medium">{match.breakdown.playstyle}/15</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.playstyle / 15) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
                         <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.playstyle / 15) * 100}%` }}></div>

@@ -134,9 +134,17 @@ export const findMatches = (currentUserProfile, allProfiles) => {
       const candidateGame = candidate.games.find(g => g.gameName === userGame.gameName);
       if (!candidateGame) continue; // 2. Hard Filter: Must share game
 
+      const isCurrentlyOnline = candidate.isOnline === true && candidate.onlineUntil && new Date(candidate.onlineUntil) > new Date();
+
       // 3. Hard Filter: Meaningful availability overlap
       const avail = calculateAvailabilityScore(userGame.availability, candidateGame.availability);
-      if (avail.score === 0) continue;
+      if (avail.score === 0) {
+        if (isCurrentlyOnline) {
+          avail.reason = 'Online Now';
+        } else {
+          continue;
+        }
+      }
 
       const skill = calculateSkillScore(userGame.skillLevel, candidateGame.skillLevel);
       // 4. Hard Filter: Reject extreme skill incompatibility (e.g. diff > 60)
@@ -167,6 +175,7 @@ export const findMatches = (currentUserProfile, allProfiles) => {
           communication: candidateGame.communication,
           competitiveGoals: candidateGame.competitiveGoals,
           compatibilityScore: totalScore,
+          isOnline: candidate.isOnline === true && candidate.onlineUntil && new Date(candidate.onlineUntil) > new Date(),
           breakdown: {
             skill: skill.score,
             role: role.score,

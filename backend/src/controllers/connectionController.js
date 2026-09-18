@@ -187,8 +187,8 @@ export const getConnections = async (req, res) => {
       $or: [{ requester: currentUser._id }, { recipient: currentUser._id }],
       status: 'accepted'
     })
-    .populate('requester', 'displayName games playstyle communication competitiveGoals')
-    .populate('recipient', 'displayName games playstyle communication competitiveGoals');
+    .populate('requester', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil')
+    .populate('recipient', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil');
 
     // Format the response so that we just return the 'other' user
     const formattedConnections = connections.map(conn => {
