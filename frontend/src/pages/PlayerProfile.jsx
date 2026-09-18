@@ -113,7 +113,18 @@ const PlayerProfile = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-border-subtle pb-8">
             <div>
               <h1 className="text-4xl font-extrabold text-white mb-2">{profile.displayName}</h1>
-              <p className="text-text-secondary tracking-widest uppercase text-sm">ZYNC Player Profile</p>
+              <div className="flex items-center gap-4">
+                <p className="text-text-secondary tracking-widest uppercase text-sm">ZYNC Player Profile</p>
+                {profile.reputation && profile.reputation.count >= 5 ? (
+                  <div className="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">
+                    ⭐ {profile.reputation.score.toFixed(1)} / 5.0 <span className="text-text-secondary ml-1 font-medium">({profile.reputation.count} ratings)</span>
+                  </div>
+                ) : (
+                  <div className="text-xs font-bold text-text-secondary bg-bg-secondary px-2 py-1 rounded border border-border-subtle">
+                    ⭐ New <span className="font-medium">· Not enough ratings yet</span>
+                  </div>
+                )}
+              </div>
             </div>
             
             <div>

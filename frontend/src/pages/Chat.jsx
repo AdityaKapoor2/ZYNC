@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getOrCreateConversation, getMessages, sendMessage } from '../services/api';
 import ReportModal from '../components/ReportModal';
+import RateModal from '../components/RateModal';
 
 const Chat = () => {
   const { userId: targetUserId } = useParams();
@@ -17,6 +18,7 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [otherUser, setOtherUser] = useState(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isRateModalOpen, setIsRateModalOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const pollInterval = useRef(null);
@@ -161,12 +163,20 @@ const Chat = () => {
             </div>
           </div>
         </div>
-        <button 
-          onClick={() => setIsReportModalOpen(true)}
-          className="text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 border border-red-500 px-3 py-1 rounded transition-colors uppercase tracking-widest"
-        >
-          Report
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsRateModalOpen(true)}
+            className="px-4 py-1.5 rounded font-bold text-xs bg-zync-blue text-white hover:bg-blue-600 transition-colors uppercase tracking-widest"
+          >
+            Rate Player
+          </button>
+          <button 
+            onClick={() => setIsReportModalOpen(true)}
+            className="px-4 py-1.5 rounded font-bold text-xs bg-bg-secondary text-red-500 border border-red-500/30 hover:bg-red-500/10 transition-colors uppercase tracking-widest"
+          >
+            Report
+          </button>
+        </div>
       </header>
 
       {/* Messages Area */}
@@ -234,6 +244,13 @@ const Chat = () => {
         reportedUserId={otherUser?._id}
         reportedUserName={otherUser?.displayName}
         conversationId={conversation?._id}
+      />
+
+      <RateModal
+        isOpen={isRateModalOpen}
+        onClose={() => setIsRateModalOpen(false)}
+        targetUserId={otherUser?._id}
+        targetUserName={otherUser?.displayName}
       />
     </div>
   );

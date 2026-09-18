@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  getMatches, 
-  getConnections, 
-  getConnectionRequests, 
+import {
+  getMatches,
+  getConnections,
+  getConnectionRequests,
   getSentConnections,
   sendConnectionRequest
 } from '../services/api';
@@ -13,7 +13,7 @@ import zyncLogo from '../assets/zync-logo.jpg';
 const Discover = () => {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
-  
+
   const [matches, setMatches] = useState([]);
   const [connectionStatuses, setConnectionStatuses] = useState({});
   const [actionLoading, setActionLoading] = useState({});
@@ -23,7 +23,7 @@ const Discover = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!currentUser) return;
-      
+
       try {
         const token = await currentUser.getIdToken();
         const [matchRes, connRes, incRes, sentRes] = await Promise.all([
@@ -32,7 +32,7 @@ const Discover = () => {
           getConnectionRequests(token),
           getSentConnections(token)
         ]);
-        
+
         setMatches(matchRes.matches || []);
 
         const statuses = {};
@@ -42,7 +42,7 @@ const Discover = () => {
         sentRes.forEach(r => { statuses[r.recipient._id] = 'sent'; });
         // Map incoming
         incRes.forEach(r => { statuses[r.requester._id] = 'incoming'; });
-        
+
         setConnectionStatuses(statuses);
       } catch (err) {
         console.error('Failed to fetch discovery data', err);
@@ -51,7 +51,7 @@ const Discover = () => {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [currentUser]);
 
@@ -109,7 +109,7 @@ const Discover = () => {
     <div className="min-h-screen bg-bg-primary text-text-primary font-sans relative overflow-x-hidden">
       {/* Background Glow */}
       <div className="fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-zync-purple/5 blur-[150px] rounded-full pointer-events-none -z-10"></div>
-      
+
       {/* Navbar */}
       <nav className="w-full py-6 px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">
         <div className="flex items-center gap-3">
@@ -120,7 +120,7 @@ const Discover = () => {
           <Link to="/dashboard" className="text-sm font-bold text-text-secondary hover:text-white transition-colors">
             Dashboard
           </Link>
-          <button 
+          <button
             onClick={handleLogout}
             className="text-xs font-bold tracking-widest text-text-secondary hover:text-white transition-colors uppercase"
           >
@@ -153,12 +153,12 @@ const Discover = () => {
             {matches.map((match) => (
               <div key={match.userId} className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl relative overflow-hidden group hover:border-zync-purple/50 transition-colors">
                 <div className="absolute inset-0 bg-gradient-to-br from-zync-purple/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                
+
                 <div className="relative z-10 flex flex-col h-full">
                   <div className="flex justify-between items-start mb-6">
                     <div>
                       <h3 className="text-2xl font-extrabold text-white mb-1">{match.displayName}</h3>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-bold bg-zync-blue/20 text-zync-cyan px-2 py-1 rounded">
                           {match.game}
                         </span>
@@ -170,6 +170,16 @@ const Discover = () => {
                           </span>
                         )}
                       </div>
+
+                      {match.reputation && match.reputation.count >= 5 ? (
+                        <div className="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded w-fit border border-yellow-400/20">
+                          ⭐ {match.reputation.score.toFixed(1)} / 5.0 <span className="text-text-secondary ml-1 font-medium">({match.reputation.count} ratings)</span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-bold text-text-secondary bg-bg-secondary px-2 py-1 rounded w-fit border border-border-subtle">
+                          ⭐ New <span className="font-medium">· Not enough ratings yet</span>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-zync-cyan to-zync-purple">
@@ -206,41 +216,59 @@ const Discover = () => {
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Role</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.role / 20) * 10)}/10</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.role / 18) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.role / 20) * 100}%` }}></div>
+                        <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.role / 18) * 100}%` }}></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Availability</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.availability / 20) * 10)}/10</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.availability / 18) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-cyan h-1.5 rounded-full" style={{ width: `${(match.breakdown.availability / 20) * 100}%` }}></div>
+                        <div className="bg-zync-cyan h-1.5 rounded-full" style={{ width: `${(match.breakdown.availability / 18) * 100}%` }}></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-text-secondary font-bold uppercase">Playstyle</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.playstyle / 15) * 10)}/10</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.playstyle / 14) * 10)}/10</span>
                       </div>
                       <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.playstyle / 15) * 100}%` }}></div>
+                        <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.playstyle / 14) * 100}%` }}></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary font-bold uppercase">Communication</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.communication / 10) * 10)}/10</span>
+                      </div>
+                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                        <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.communication / 10) * 100}%` }}></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary font-bold uppercase">Reputation</span>
+                        <span className="text-white font-medium">{Math.round((match.breakdown.reputation / 10) * 10)}/10</span>
+                      </div>
+                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                        <div className="bg-yellow-400 h-1.5 rounded-full" style={{ width: `${(match.breakdown.reputation / 10) * 100}%` }}></div>
                       </div>
                     </div>
                   </div>
 
                   {/* Actions */}
                   <div className="mt-auto flex gap-3">
-                    <button 
+                    <button
                       onClick={() => navigate(`/player/${match.userId}`)}
                       className="flex-1 py-3 rounded font-bold text-sm border border-border-subtle text-white hover:bg-bg-secondary transition-colors uppercase tracking-widest"
                     >
                       View Profile
                     </button>
-                    
+
                     {connectionStatuses[match.userId] === 'connected' && (
                       <button disabled className="flex-1 py-3 rounded font-bold text-sm bg-bg-secondary text-zync-cyan border border-zync-cyan/30 uppercase tracking-widest cursor-default">
                         Connected
@@ -252,7 +280,7 @@ const Discover = () => {
                       </button>
                     )}
                     {connectionStatuses[match.userId] === 'incoming' && (
-                      <button 
+                      <button
                         onClick={() => navigate('/connections')}
                         className="flex-1 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white uppercase tracking-widest"
                       >
@@ -260,7 +288,7 @@ const Discover = () => {
                       </button>
                     )}
                     {!connectionStatuses[match.userId] && (
-                      <button 
+                      <button
                         onClick={() => handleConnect(match.userId)}
                         disabled={actionLoading[match.userId]}
                         className="flex-1 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white uppercase tracking-widest disabled:opacity-50"

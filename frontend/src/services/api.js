@@ -113,3 +113,11 @@ export const submitReport = async (token, reportData) => {
     body: JSON.stringify(reportData)
   });
 };
+
+// RATINGS
+export const submitRating = async (token, ratingData) => {
+  return fetchWithAuth('/ratings', token, {
+    method: 'POST',
+    body: JSON.stringify(ratingData)
+  });
+};
