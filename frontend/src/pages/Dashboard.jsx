@@ -106,12 +106,20 @@ const Dashboard = () => {
             </h1>
             <p className="text-text-secondary text-lg">Manage your profiles and find compatible teammates.</p>
           </div>
-          <button 
-            onClick={() => navigate('/onboarding?edit=true')}
-            className="px-6 py-2 rounded font-bold text-sm border border-border-subtle text-text-secondary hover:text-white hover:border-zync-cyan transition-colors uppercase tracking-widest"
-          >
-            Edit Profile
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => navigate('/connections')}
+              className="px-6 py-2 rounded font-bold text-sm border border-zync-cyan text-zync-cyan hover:bg-zync-cyan/10 transition-colors uppercase tracking-widest"
+            >
+              My Connections
+            </button>
+            <button 
+              onClick={() => navigate('/onboarding?edit=true')}
+              className="px-6 py-2 rounded font-bold text-sm border border-border-subtle text-text-secondary hover:text-white hover:border-white transition-colors uppercase tracking-widest"
+            >
+              Edit Profile
+            </button>
+          </div>
         </header>
 
         {/* Profile Stats */}

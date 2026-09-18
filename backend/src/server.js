@@ -29,9 +29,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profiles', profileRoutes);
 
 import matchRoutes from './routes/matchRoutes.js';
+import connectionRoutes from './routes/connectionRoutes.js';
 
 // We will import and use other routes here
 app.use('/api/matches', matchRoutes);
+app.use('/api/connections', connectionRoutes);
 
 const PORT = process.env.PORT || 5000;
 

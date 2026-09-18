@@ -42,3 +42,33 @@ export const updateProfile = async (token, profileData) => {
 export const getMatches = async (token) => {
   return fetchWithAuth('/matches', token, { method: 'GET' });
 };
+
+// PUBLIC PROFILE
+export const getPublicProfile = async (token, userId) => {
+  return fetchWithAuth(`/profiles/user/${userId}`, token, { method: 'GET' });
+};
+
+// CONNECTIONS
+export const getConnections = async (token) => {
+  return fetchWithAuth('/connections', token, { method: 'GET' });
+};
+
+export const getConnectionRequests = async (token) => {
+  return fetchWithAuth('/connections/requests', token, { method: 'GET' });
+};
+
+export const getSentConnections = async (token) => {
+  return fetchWithAuth('/connections/sent', token, { method: 'GET' });
+};
+
+export const sendConnectionRequest = async (token, userId) => {
+  return fetchWithAuth(`/connections/request/${userId}`, token, { method: 'POST' });
+};
+
+export const acceptConnection = async (token, connectionId) => {
+  return fetchWithAuth(`/connections/${connectionId}/accept`, token, { method: 'PUT' });
+};
+
+export const rejectConnection = async (token, connectionId) => {
+  return fetchWithAuth(`/connections/${connectionId}/reject`, token, { method: 'PUT' });
+};

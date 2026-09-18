@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { getMatches } from '../services/api';
+import { 
+  getMatches, 
+  getConnections, 
+  getConnectionRequests, 
+  getSentConnections,
+  sendConnectionRequest
+} from '../services/api';
 import zyncLogo from '../assets/zync-logo.jpg';
 
 const Discover = () => {
@@ -9,27 +15,59 @@ const Discover = () => {
   const navigate = useNavigate();
   
   const [matches, setMatches] = useState([]);
+  const [connectionStatuses, setConnectionStatuses] = useState({});
+  const [actionLoading, setActionLoading] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchMatches = async () => {
+    const fetchData = async () => {
       if (!currentUser) return;
       
       try {
         const token = await currentUser.getIdToken();
-        const data = await getMatches(token);
-        setMatches(data.matches || []);
+        const [matchRes, connRes, incRes, sentRes] = await Promise.all([
+          getMatches(token),
+          getConnections(token),
+          getConnectionRequests(token),
+          getSentConnections(token)
+        ]);
+        
+        setMatches(matchRes.matches || []);
+
+        const statuses = {};
+        // Map connected
+        connRes.forEach(c => { statuses[c.user._id] = 'connected'; });
+        // Map sent
+        sentRes.forEach(r => { statuses[r.recipient._id] = 'sent'; });
+        // Map incoming
+        incRes.forEach(r => { statuses[r.requester._id] = 'incoming'; });
+        
+        setConnectionStatuses(statuses);
       } catch (err) {
-        console.error('Failed to fetch matches', err);
+        console.error('Failed to fetch discovery data', err);
         setError(err.message || 'Failed to load matches.');
       } finally {
         setLoading(false);
       }
     };
     
-    fetchMatches();
+    fetchData();
   }, [currentUser]);
+
+  const handleConnect = async (targetId) => {
+    try {
+      setActionLoading(prev => ({ ...prev, [targetId]: true }));
+      const token = await currentUser.getIdToken();
+      await sendConnectionRequest(token, targetId);
+      setConnectionStatuses(prev => ({ ...prev, [targetId]: 'sent' }));
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Failed to send request');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [targetId]: false }));
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -190,12 +228,40 @@ const Discover = () => {
 
                   {/* Actions */}
                   <div className="mt-auto flex gap-3">
-                    <button className="flex-1 py-3 rounded font-bold text-sm border border-border-subtle text-white hover:bg-bg-secondary transition-colors uppercase tracking-widest">
+                    <button 
+                      onClick={() => navigate(`/player/${match.userId}`)}
+                      className="flex-1 py-3 rounded font-bold text-sm border border-border-subtle text-white hover:bg-bg-secondary transition-colors uppercase tracking-widest"
+                    >
                       View Profile
                     </button>
-                    <button className="flex-1 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white uppercase tracking-widest">
-                      Connect
-                    </button>
+                    
+                    {connectionStatuses[match.userId] === 'connected' && (
+                      <button disabled className="flex-1 py-3 rounded font-bold text-sm bg-bg-secondary text-zync-cyan border border-zync-cyan/30 uppercase tracking-widest cursor-default">
+                        Connected
+                      </button>
+                    )}
+                    {connectionStatuses[match.userId] === 'sent' && (
+                      <button disabled className="flex-1 py-3 rounded font-bold text-sm bg-bg-secondary text-text-secondary border border-border-subtle uppercase tracking-widest cursor-default">
+                        Request Sent
+                      </button>
+                    )}
+                    {connectionStatuses[match.userId] === 'incoming' && (
+                      <button 
+                        onClick={() => navigate('/connections')}
+                        className="flex-1 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white uppercase tracking-widest"
+                      >
+                        Respond
+                      </button>
+                    )}
+                    {!connectionStatuses[match.userId] && (
+                      <button 
+                        onClick={() => handleConnect(match.userId)}
+                        disabled={actionLoading[match.userId]}
+                        className="flex-1 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white uppercase tracking-widest disabled:opacity-50"
+                      >
+                        {actionLoading[match.userId] ? 'Sending...' : 'Connect'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
