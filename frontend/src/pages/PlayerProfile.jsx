@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  getPublicProfile, 
-  getConnections, 
-  getConnectionRequests, 
+import {
+  getPublicProfile,
+  getConnections,
+  getConnectionRequests,
   getSentConnections,
   sendConnectionRequest
 } from '../services/api';
@@ -13,11 +13,11 @@ const PlayerProfile = () => {
   const { id } = useParams();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  
+
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // Connection states
   const [connectionStatus, setConnectionStatus] = useState('none'); // 'none', 'connected', 'sent', 'incoming'
   const [actionLoading, setActionLoading] = useState(false);
@@ -28,7 +28,7 @@ const PlayerProfile = () => {
       try {
         setLoading(true);
         const token = await currentUser.getIdToken();
-        
+
         // Fetch public profile and all connections
         const [profRes, connRes, incRes, sentRes] = await Promise.all([
           getPublicProfile(token, id),
@@ -36,7 +36,7 @@ const PlayerProfile = () => {
           getConnectionRequests(token),
           getSentConnections(token)
         ]);
-        
+
         setProfile(profRes);
 
         // Determine connection status
@@ -56,7 +56,7 @@ const PlayerProfile = () => {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [id, currentUser]);
 
@@ -100,9 +100,9 @@ const PlayerProfile = () => {
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 md:p-12 relative overflow-hidden font-sans">
       <div className="absolute top-0 right-0 w-[600px] max-w-[100vw] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
-      
+
       <div className="max-w-4xl mx-auto relative z-10">
-        <button 
+        <button
           onClick={() => navigate(-1)}
           className="mb-6 md:mb-8 flex items-center text-text-secondary hover:text-white transition-colors text-sm font-bold tracking-widest uppercase"
         >
@@ -126,7 +126,7 @@ const PlayerProfile = () => {
                 )}
               </div>
             </div>
-            
+
             <div className="w-full md:w-auto shrink-0">
               {connectionStatus === 'connected' && (
                 <button disabled className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-bg-secondary text-zync-cyan border border-zync-cyan/30 uppercase tracking-widest cursor-default">
@@ -144,7 +144,7 @@ const PlayerProfile = () => {
                 </button>
               )}
               {connectionStatus === 'none' && (
-                <button 
+                <button
                   onClick={handleConnect}
                   disabled={actionLoading}
                   className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple text-white hover:opacity-90 transition-all uppercase tracking-widest shadow-lg shadow-zync-purple/20 disabled:opacity-50"
@@ -181,7 +181,7 @@ const PlayerProfile = () => {
                       ))}
                     </div>
                   </div>
-                  
+
                   <div>
                     <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-3">Availability</h3>
                     <div className="flex flex-wrap gap-2">
