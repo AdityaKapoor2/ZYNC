@@ -71,13 +71,13 @@ const Inbox = () => {
       <Navbar />
       <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-zync-blue/5 blur-[100px] rounded-full pointer-events-none -z-10"></div>
       
-      <main className="max-w-4xl mx-auto px-6 py-12 relative z-10">
-        <header className="mb-12 flex justify-between items-end">
+      <main className="max-w-4xl mx-auto px-4 md:px-6 py-8 md:py-12 relative z-10">
+        <header className="mb-8 md:mb-12 flex justify-between items-end">
           <div>
-            <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">
+            <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-2 tracking-tight">
               Stay connected with your <span className="text-transparent bg-clip-text bg-gradient-to-r from-zync-blue to-zync-cyan">teammates.</span>
             </h1>
-            <p className="text-text-secondary text-lg">Manage connection requests and keep up with the people you play with.</p>
+            <p className="text-text-secondary text-sm md:text-lg">Manage connection requests and keep up with the people you play with.</p>
           </div>
         </header>
 
@@ -95,39 +95,39 @@ const Inbox = () => {
           </h2>
           
           {incomingRequests.length === 0 ? (
-             <div className="bg-bg-card border border-border-subtle rounded-md p-8 text-center">
-               <p className="text-white font-bold mb-2 text-lg">No new connection requests.</p>
+             <div className="bg-bg-card border border-border-subtle rounded-md p-6 md:p-8 text-center">
+               <p className="text-white font-bold mb-2 text-base md:text-lg">No new connection requests.</p>
                <p className="text-text-secondary text-sm">You're all caught up.</p>
              </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 md:gap-3">
               {incomingRequests.map(req => (
-                <div key={req._id} className="bg-bg-card border border-border-subtle rounded-md px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-bg-secondary/50 transition-colors gap-4">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-bg-secondary border border-border-subtle flex items-center justify-center text-white font-bold">
+                <div key={req._id} className="bg-bg-card border border-border-subtle rounded-md px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-bg-secondary/50 transition-colors gap-4">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 shrink-0 rounded-full bg-bg-secondary border border-border-subtle flex items-center justify-center text-white font-bold">
                       {req.requester.displayName.charAt(0).toUpperCase()}
                     </div>
-                    <div>
-                      <h3 className="text-base font-bold text-white leading-tight">{req.requester.displayName}</h3>
-                      <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-white leading-tight truncate">{req.requester.displayName}</h3>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
                         {req.requester.games?.slice(0,2).map(g => (
-                          <span key={g._id} className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                          <span key={g._id} className="text-[10px] uppercase font-bold tracking-wider text-text-secondary truncate max-w-full">
                             {g.gameName}
                           </span>
                         ))}
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-3 w-full md:w-auto">
+                  <div className="flex gap-2 sm:gap-3 w-full md:w-auto mt-2 md:mt-0 border-t md:border-none border-border-subtle/50 pt-3 md:pt-0">
                     <button 
                       onClick={() => handleAccept(req._id)}
-                      className="flex-1 md:flex-none px-6 py-2 rounded font-bold text-xs bg-gradient-to-r from-zync-blue to-zync-cyan text-white hover:opacity-90 tracking-widest uppercase"
+                      className="flex-1 md:flex-none px-4 md:px-6 py-2 rounded font-bold text-xs bg-gradient-to-r from-zync-blue to-zync-cyan text-white hover:opacity-90 tracking-widest uppercase whitespace-nowrap text-center"
                     >
                       Accept
                     </button>
                     <button 
                       onClick={() => handleReject(req._id)}
-                      className="flex-1 md:flex-none px-6 py-2 rounded font-bold text-xs border border-border-subtle text-text-secondary hover:text-white hover:border-gray-500 tracking-widest uppercase transition-colors"
+                      className="flex-1 md:flex-none px-4 md:px-6 py-2 rounded font-bold text-xs border border-border-subtle text-text-secondary hover:text-white hover:border-gray-500 tracking-widest uppercase transition-colors whitespace-nowrap text-center"
                     >
                       Decline
                     </button>
