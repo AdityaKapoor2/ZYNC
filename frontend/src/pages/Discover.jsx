@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   getMatches,
   getConnections,
@@ -8,12 +8,16 @@ import {
   getSentConnections,
   sendConnectionRequest
 } from '../services/api';
-import zyncLogo from '../assets/zync-logo.jpg';
+import Navbar from '../components/Navbar';
 
 const Discover = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const selectedGame = queryParams.get('game');
 
+  const [expandedCards, setExpandedCards] = useState({});
   const [matches, setMatches] = useState([]);
   const [connectionStatuses, setConnectionStatuses] = useState({});
   const [actionLoading, setActionLoading] = useState({});
@@ -23,11 +27,16 @@ const Discover = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!currentUser) return;
+      
+      if (!selectedGame) {
+        navigate('/dashboard');
+        return;
+      }
 
       try {
         const token = await currentUser.getIdToken();
         const [matchRes, connRes, incRes, sentRes] = await Promise.all([
-          getMatches(token),
+          getMatches(token, selectedGame),
           getConnections(token),
           getConnectionRequests(token),
           getSentConnections(token)
@@ -53,7 +62,7 @@ const Discover = () => {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, selectedGame, navigate]);
 
   const handleConnect = async (targetId) => {
     try {
@@ -69,14 +78,7 @@ const Discover = () => {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/login');
-    } catch (error) {
-      console.error('Failed to log out', error);
-    }
-  };
+
 
   if (!currentUser) {
     return (
@@ -111,23 +113,7 @@ const Discover = () => {
       <div className="fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-zync-purple/5 blur-[150px] rounded-full pointer-events-none -z-10"></div>
 
       {/* Navbar */}
-      <nav className="w-full py-6 px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 object-contain" />
-          <span className="text-xl font-extrabold tracking-tight text-white">ZYNC</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <Link to="/dashboard" className="text-sm font-bold text-text-secondary hover:text-white transition-colors">
-            Dashboard
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="text-xs font-bold tracking-widest text-text-secondary hover:text-white transition-colors uppercase"
-          >
-            Log Out
-          </button>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-12">
@@ -135,7 +121,7 @@ const Discover = () => {
           <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">
             DISCOVER <span className="text-transparent bg-clip-text bg-gradient-to-r from-zync-blue to-zync-purple">TEAMMATES</span>
           </h1>
-          <p className="text-text-secondary text-lg">Players compatible with your competitive needs.</p>
+          <p className="text-text-secondary text-lg">Finding teammates for {selectedGame}</p>
         </header>
 
         {matches.length === 0 ? (
@@ -181,90 +167,90 @@ const Discover = () => {
                         </div>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-zync-cyan to-zync-purple">
+                    <div className="text-right flex flex-col items-end">
+                      <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-zync-cyan to-zync-purple leading-none mb-1">
                         {match.compatibilityScore}%
                       </div>
-                      <div className="text-xs font-bold text-text-secondary uppercase tracking-widest">Compatible</div>
+                      <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">Compatibility</div>
                     </div>
                   </div>
 
-                  {/* Reasons */}
-                  <div className="mb-6">
-                    <p className="text-xs font-bold tracking-widest text-text-secondary mb-2 uppercase">Why this match?</p>
-                    <ul className="space-y-1">
-                      {match.matchReasons.map((reason, idx) => (
-                        <li key={idx} className="text-sm text-white flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 bg-zync-cyan rounded-full"></span>
-                          {reason}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+
+
+                  {/* Toggle Full Compatibility */}
+                  <button
+                    onClick={() => setExpandedCards(prev => ({ ...prev, [match.userId]: !prev[match.userId] }))}
+                    className="text-xs font-bold text-zync-cyan hover:text-white transition-colors uppercase tracking-widest mb-6 flex items-center gap-2 w-fit"
+                  >
+                    {expandedCards[match.userId] ? 'Hide Full Compatibility' : 'View Full Compatibility'}
+                    <span className="text-base leading-none">{expandedCards[match.userId] ? '↑' : '↓'}</span>
+                  </button>
 
                   {/* Breakdown */}
-                  <div className="mb-8 grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Skill</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.skill / 25) * 10)}/10</span>
+                  {expandedCards[match.userId] && (
+                    <div className="mb-8 grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Skill</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.skill / 25) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.skill / 25) * 100}%` }}></div>
+                        </div>
                       </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.skill / 25) * 100}%` }}></div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Role</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.role / 18) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.role / 18) * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Availability</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.availability / 18) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-zync-cyan h-1.5 rounded-full" style={{ width: `${(match.breakdown.availability / 18) * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Playstyle</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.playstyle / 14) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.playstyle / 14) * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Communication</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.communication / 10) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.communication / 10) * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-text-secondary font-bold uppercase">Reputation</span>
+                          <span className="text-white font-medium">{Math.round((match.breakdown.reputation / 10) * 10)}/10</span>
+                        </div>
+                        <div className="w-full bg-bg-secondary rounded-full h-1.5">
+                          <div className="bg-yellow-400 h-1.5 rounded-full" style={{ width: `${(match.breakdown.reputation / 10) * 100}%` }}></div>
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Role</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.role / 18) * 10)}/10</span>
-                      </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.role / 18) * 100}%` }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Availability</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.availability / 18) * 10)}/10</span>
-                      </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-cyan h-1.5 rounded-full" style={{ width: `${(match.breakdown.availability / 18) * 100}%` }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Playstyle</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.playstyle / 14) * 10)}/10</span>
-                      </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-blue h-1.5 rounded-full" style={{ width: `${(match.breakdown.playstyle / 14) * 100}%` }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Communication</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.communication / 10) * 10)}/10</span>
-                      </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-zync-purple h-1.5 rounded-full" style={{ width: `${(match.breakdown.communication / 10) * 100}%` }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-bold uppercase">Reputation</span>
-                        <span className="text-white font-medium">{Math.round((match.breakdown.reputation / 10) * 10)}/10</span>
-                      </div>
-                      <div className="w-full bg-bg-secondary rounded-full h-1.5">
-                        <div className="bg-yellow-400 h-1.5 rounded-full" style={{ width: `${(match.breakdown.reputation / 10) * 100}%` }}></div>
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Actions */}
-                  <div className="mt-auto flex gap-3">
+                  <div className="mt-auto flex gap-3 pt-2 border-t border-border-subtle/50">
                     <button
                       onClick={() => navigate(`/player/${match.userId}`)}
-                      className="flex-1 py-3 rounded font-bold text-sm border border-border-subtle text-white hover:bg-bg-secondary transition-colors uppercase tracking-widest"
+                      className="flex-1 py-3 rounded font-bold text-sm border border-border-subtle text-text-secondary hover:text-white hover:bg-bg-secondary transition-colors uppercase tracking-widest"
                     >
                       View Profile
                     </button>

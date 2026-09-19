@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import zyncLogo from '../assets/zync-logo.jpg';
-import { verifyAuth, getProfile } from '../services/api';
+import { verifyAuth, getProfile, setOnlineStatus } from '../services/api';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -56,6 +56,13 @@ const Login = () => {
       // Fetch user profile
       const profile = await getProfile(token);
       
+      // Auto set online status
+      try {
+        await setOnlineStatus(token);
+      } catch (err) {
+        console.error('Failed to set initial online status', err);
+      }
+      
       if (!profile.games || profile.games.length === 0) {
         navigate('/onboarding');
       } else {
@@ -81,7 +88,7 @@ const Login = () => {
         <div className="text-center mb-8">
           <img src={zyncLogo} alt="ZYNC Logo" className="w-12 h-12 object-contain mx-auto mb-6" />
           <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2">
-            {isLogin ? 'WELCOME BACK' : 'JOIN ZYNC'}
+            {isLogin ? 'Welcome Back' : 'Join ZYNC'}
           </h2>
           <p className="text-sm text-text-secondary">
             {isLogin ? 'Enter your credentials to access your squad.' : 'Create an account to start building your squad.'}
@@ -102,7 +109,7 @@ const Login = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-bg-secondary border border-border-subtle rounded px-4 py-3 text-white focus:outline-none focus:border-zync-blue transition-colors text-sm"
+              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-cyan focus:ring-1 focus:ring-zync-cyan transition-colors text-sm"
               placeholder="gamer@example.com"
             />
           </div>
@@ -113,29 +120,29 @@ const Login = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-bg-secondary border border-border-subtle rounded px-4 py-3 text-white focus:outline-none focus:border-zync-blue transition-colors text-sm"
+              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-cyan focus:ring-1 focus:ring-zync-cyan transition-colors text-sm"
               placeholder="••••••••"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all text-white disabled:opacity-50 mt-2"
+            className="w-full py-3 rounded-lg font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 transition-all text-white disabled:opacity-50 mt-2"
           >
-            {loading ? 'AUTHENTICATING...' : (isLogin ? 'SIGN IN' : 'CREATE ACCOUNT')}
+            {loading ? 'Authenticating...' : (isLogin ? 'Sign In' : 'Create Account')}
           </button>
         </form>
 
         <div className="my-6 flex items-center gap-4">
           <div className="h-px bg-border-subtle flex-1"></div>
-          <span className="text-xs font-bold tracking-widest text-text-secondary uppercase">Or</span>
+          <span className="text-xs font-bold text-text-secondary">Or</span>
           <div className="h-px bg-border-subtle flex-1"></div>
         </div>
 
         <button
           onClick={handleGoogleAuth}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 py-3 rounded font-bold text-sm bg-white text-black hover:bg-gray-200 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 py-3 rounded-lg font-bold text-sm bg-white text-black hover:bg-gray-200 transition-colors disabled:opacity-50"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -143,16 +150,16 @@ const Login = () => {
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
           </svg>
-          CONTINUE WITH GOOGLE
+          Continue with Google
         </button>
 
         <p className="mt-8 text-center text-sm text-text-secondary font-medium">
-          {isLogin ? "DON'T HAVE AN ACCOUNT? " : "ALREADY HAVE AN ACCOUNT? "}
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-zync-cyan hover:text-white transition-colors tracking-wide ml-1"
+            className="text-zync-cyan hover:text-white transition-colors ml-1"
           >
-            {isLogin ? 'SIGN UP' : 'LOG IN'}
+            {isLogin ? 'Sign Up' : 'Log In'}
           </button>
         </p>
       </div>

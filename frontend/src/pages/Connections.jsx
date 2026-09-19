@@ -1,21 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  getConnections, 
-  getConnectionRequests, 
-  getSentConnections,
-  acceptConnection,
-  rejectConnection 
-} from '../services/api';
+import { getConnections } from '../services/api';
+import Navbar from '../components/Navbar';
 
 const Connections = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
   const [connections, setConnections] = useState([]);
-  const [incomingRequests, setIncomingRequests] = useState([]);
-  const [sentRequests, setSentRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -25,15 +18,11 @@ const Connections = () => {
       try {
         setLoading(true);
         const token = await currentUser.getIdToken();
-        const [connRes, incRes, sentRes] = await Promise.all([
-          getConnections(token),
-          getConnectionRequests(token),
-          getSentConnections(token)
+        const [connRes] = await Promise.all([
+          getConnections(token)
         ]);
         
         setConnections(connRes);
-        setIncomingRequests(incRes);
-        setSentRequests(sentRes);
       } catch (err) {
         console.error("Failed to load connections:", err);
         setError("Failed to load your connections.");
@@ -45,32 +34,6 @@ const Connections = () => {
     fetchData();
   }, [currentUser]);
 
-  const handleAccept = async (connectionId) => {
-    try {
-      const token = await currentUser.getIdToken();
-      await acceptConnection(token, connectionId);
-      // Remove from incoming and add to connections in state
-      const acceptedReq = incomingRequests.find(req => req._id === connectionId);
-      if (acceptedReq) {
-        setIncomingRequests(prev => prev.filter(req => req._id !== connectionId));
-        setConnections(prev => [...prev, { connectionId: acceptedReq._id, user: acceptedReq.requester }]);
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Failed to accept connection request.");
-    }
-  };
-
-  const handleReject = async (connectionId) => {
-    try {
-      const token = await currentUser.getIdToken();
-      await rejectConnection(token, connectionId);
-      setIncomingRequests(prev => prev.filter(req => req._id !== connectionId));
-    } catch (err) {
-      console.error(err);
-      setError("Failed to reject connection request.");
-    }
-  };
 
   if (loading) {
     return (
@@ -82,10 +45,11 @@ const Connections = () => {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary p-6 md:p-12 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden font-sans">
+      <Navbar />
       <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-zync-cyan/5 blur-[100px] rounded-full pointer-events-none -z-10"></div>
       
-      <div className="max-w-6xl mx-auto relative z-10">
+      <main className="max-w-6xl mx-auto px-6 py-12 relative z-10">
         <header className="mb-12 flex justify-between items-end">
           <div>
             <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">
@@ -93,12 +57,6 @@ const Connections = () => {
             </h1>
             <p className="text-text-secondary text-lg">Manage your connections and requests.</p>
           </div>
-          <button 
-            onClick={() => navigate('/dashboard')}
-            className="px-6 py-2 rounded font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all uppercase tracking-widest"
-          >
-            Dashboard
-          </button>
         </header>
 
         {error && (
@@ -107,98 +65,79 @@ const Connections = () => {
           </div>
         )}
 
-        {/* Incoming Requests */}
-        {incomingRequests.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-xl font-bold text-white mb-4 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-zync-cyan"></span>
-              Incoming Requests
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {incomingRequests.map(req => (
-                <div key={req._id} className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl">
-                  <h3 className="text-lg font-bold text-white mb-1">{req.requester.displayName}</h3>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {req.requester.games?.map(g => (
-                      <span key={g._id} className="text-xs bg-bg-secondary text-text-secondary px-2 py-1 rounded">
-                        {g.gameName}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleAccept(req._id)}
-                      className="flex-1 py-2 rounded font-bold text-xs bg-gradient-to-r from-zync-blue to-zync-cyan text-white hover:opacity-90"
-                    >
-                      ACCEPT
-                    </button>
-                    <button 
-                      onClick={() => handleReject(req._id)}
-                      className="flex-1 py-2 rounded font-bold text-xs border border-border-subtle text-text-secondary hover:text-white hover:border-gray-500"
-                    >
-                      REJECT
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+
 
         {/* Accepted Connections */}
         <section className="mb-12">
-          <h2 className="text-xl font-bold text-white mb-4 uppercase tracking-widest flex items-center gap-2">
+          <h2 className="text-sm font-bold tracking-widest text-text-secondary uppercase mb-4 flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-zync-purple"></span>
             My Connections
+            <div className="h-px bg-border-subtle flex-1 ml-2"></div>
           </h2>
           {connections.length === 0 ? (
-            <div className="bg-bg-card border border-border-subtle rounded-xl p-8 text-center">
-              <p className="text-text-secondary">You don't have any connections yet.</p>
+            <div className="bg-bg-card border border-border-subtle rounded-md p-8 text-center">
+              <p className="text-text-secondary mb-4">You don't have any connections yet.</p>
               <button 
                 onClick={() => navigate('/discover')}
-                className="mt-4 px-6 py-2 rounded font-bold text-sm bg-zync-blue hover:bg-blue-500 text-white transition-all uppercase tracking-widest"
+                className="px-6 py-2 rounded font-bold text-sm bg-zync-blue hover:bg-blue-500 text-white transition-all uppercase tracking-widest"
               >
                 Find Teammates
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-2">
               {connections.map(conn => {
                 const isOnline = conn.user.isOnline && new Date(conn.user.onlineUntil) > new Date();
+                const primaryGame = conn.user.games?.[0];
                 return (
                   <div 
                     key={conn.connectionId} 
-                    className="bg-bg-card border border-border-subtle rounded-xl p-6 shadow-xl flex flex-col justify-between hover:border-zync-purple transition-all"
+                    className="bg-bg-card border border-border-subtle rounded-md px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-bg-secondary/50 transition-colors gap-4"
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-1">
-                        <h3 className="text-lg font-bold text-white cursor-pointer hover:text-zync-cyan" onClick={() => navigate(`/player/${conn.user._id}`)}>
-                          {conn.user.displayName}
-                        </h3>
-                        {isOnline ? (
-                          <span className="flex items-center text-xs text-green-400 font-bold tracking-wider">
-                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mr-1"></span>
-                            ONLINE
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-500 font-bold tracking-wider">OFFLINE</span>
+                    <div className="flex items-center gap-4 flex-1">
+                      <div 
+                        className="w-10 h-10 rounded-full bg-bg-secondary border border-border-subtle flex items-center justify-center text-white font-bold cursor-pointer hover:border-zync-purple transition-colors relative"
+                        onClick={() => navigate(`/player/${conn.user._id}`)}
+                      >
+                        {conn.user.displayName.charAt(0).toUpperCase()}
+                        {isOnline && (
+                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-bg-card animate-pulse"></span>
                         )}
                       </div>
-                      <p className="text-xs text-text-secondary mb-4 uppercase">Connected Squad Member</p>
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {conn.user.games?.map(g => (
-                          <span key={g._id} className="text-xs bg-bg-secondary text-text-secondary px-2 py-1 rounded">
-                            {g.gameName} - {g.inGameName}
-                          </span>
-                        ))}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 
+                            className="text-base font-bold text-white cursor-pointer hover:text-zync-cyan transition-colors leading-tight" 
+                            onClick={() => navigate(`/player/${conn.user._id}`)}
+                          >
+                            {conn.user.displayName}
+                          </h3>
+                        </div>
+                        {primaryGame && (
+                          <div className="flex items-center gap-3 mt-1 text-xs text-text-secondary uppercase tracking-widest font-bold">
+                            <span className="text-zync-cyan">{primaryGame.gameName}</span>
+                            <span className="w-1 h-1 rounded-full bg-border-subtle"></span>
+                            <span>{primaryGame.skillLevel || 'N/A'}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <button 
-                      onClick={() => navigate(`/chat/${conn.user._id}`)}
-                      className="w-full py-2 rounded font-bold text-sm bg-zync-purple hover:bg-purple-600 text-white transition-all uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <span>💬</span> MESSAGE
-                    </button>
+                    
+                    <div className="flex items-center gap-6">
+                      <div className="text-right hidden md:block">
+                        <div className="text-xs text-text-secondary uppercase tracking-widest font-bold">Reputation</div>
+                        <div className="text-sm font-bold text-white flex items-center justify-end gap-1">
+                          <span className="text-yellow-400">★</span> {conn.user.reputationScore ? (conn.user.reputationScore / 10).toFixed(1) : 'NEW'}
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={() => navigate(`/chat/${conn.user._id}`)}
+                        className="px-6 py-2 rounded font-bold text-xs bg-zync-purple hover:bg-purple-600 text-white transition-all uppercase tracking-widest w-full md:w-auto text-center"
+                      >
+                        Message
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -206,25 +145,9 @@ const Connections = () => {
           )}
         </section>
 
-        {/* Sent Requests */}
-        {sentRequests.length > 0 && (
-          <section>
-            <h2 className="text-xl font-bold text-text-secondary mb-4 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-gray-600"></span>
-              Sent Requests
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {sentRequests.map(req => (
-                <div key={req._id} className="bg-bg-secondary border border-border-subtle rounded-lg p-4 opacity-75">
-                  <h3 className="text-sm font-bold text-white mb-1">{req.recipient.displayName}</h3>
-                  <p className="text-xs text-zync-cyan">Request Pending</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
-      </div>
+
+      </main>
     </div>
   );
 };

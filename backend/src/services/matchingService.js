@@ -126,7 +126,7 @@ function calculateReputationScore(reputation, isMode2) {
 /**
  * Main matching algorithm
  */
-export const findMatches = (currentUserProfile, allProfiles) => {
+export const findMatches = (currentUserProfile, allProfiles, selectedGame) => {
   const matches = [];
 
   for (const candidate of allProfiles) {
@@ -137,7 +137,12 @@ export const findMatches = (currentUserProfile, allProfiles) => {
     let bestGameMatch = null;
 
     // Evaluate compatibility for each shared game
-    for (const userGame of currentUserProfile.games) {
+    let gamesToEvaluate = currentUserProfile.games;
+    if (selectedGame) {
+      gamesToEvaluate = currentUserProfile.games.filter(g => g.gameName === selectedGame);
+    }
+
+    for (const userGame of gamesToEvaluate) {
       const candidateGame = candidate.games.find(g => g.gameName === userGame.gameName);
       if (!candidateGame) continue; // 2. Hard Filter: Must share game
 

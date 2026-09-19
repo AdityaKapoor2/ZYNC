@@ -55,16 +55,16 @@ const ReportModal = ({ isOpen, onClose, reportedUserId, reportedUserName, conver
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-bg-card border border-border-subtle rounded-xl w-full max-w-md p-6 relative">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-bg-card border border-border-subtle rounded-xl w-full max-w-md p-6 relative shadow-2xl shadow-black/50">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-text-secondary hover:text-white"
+          className="absolute top-4 right-4 text-text-secondary hover:text-white transition-colors"
         >
           ✕
         </button>
 
-        <h2 className="text-2xl font-bold text-red-500 mb-2 uppercase tracking-tight">Report Player</h2>
+        <h2 className="text-2xl font-bold text-red-500 mb-2">Report Player</h2>
         <p className="text-sm text-text-secondary mb-6">
           You are reporting <span className="font-bold text-white">{reportedUserName}</span>. This report will be reviewed by moderation.
         </p>
@@ -80,7 +80,7 @@ const ReportModal = ({ isOpen, onClose, reportedUserId, reportedUserName, conver
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full bg-bg-secondary border border-border-subtle rounded px-4 py-3 text-white focus:outline-none focus:border-red-500"
+              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors"
               disabled={isSubmitting || success}
             >
               <option value="">Select a reason...</option>
@@ -97,7 +97,7 @@ const ReportModal = ({ isOpen, onClose, reportedUserId, reportedUserName, conver
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-bg-secondary border border-border-subtle rounded px-4 py-3 text-white focus:outline-none focus:border-red-500 min-h-[100px]"
+              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors min-h-[100px]"
               placeholder="Provide any additional context..."
               disabled={isSubmitting || success}
             />
@@ -107,14 +107,14 @@ const ReportModal = ({ isOpen, onClose, reportedUserId, reportedUserName, conver
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded text-sm font-bold text-text-secondary hover:text-white uppercase tracking-widest"
+              className="px-4 py-2 rounded-lg text-sm font-bold text-text-secondary hover:text-white transition-colors"
               disabled={isSubmitting || success}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors uppercase tracking-widest disabled:opacity-50"
+              className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:brightness-110 text-white transition-all disabled:opacity-50"
               disabled={isSubmitting || success || !reason}
             >
               {isSubmitting ? 'Submitting...' : 'Submit Report'}

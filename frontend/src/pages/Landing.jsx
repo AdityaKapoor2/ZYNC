@@ -22,7 +22,7 @@ const Landing = () => {
           <span className="hover:text-text-primary transition-colors cursor-pointer">How It Works</span>
         </div>
         <div>
-          <Link to="/login" className="text-sm font-bold tracking-wide hover:text-white transition-colors px-6 py-2.5 rounded-md bg-bg-secondary border border-border-subtle hover:border-zync-blue/50">
+          <Link to="/login" className="text-sm font-bold tracking-wide text-bg-primary bg-white hover:bg-gray-200 transition-colors px-6 py-2.5 rounded-md">
             Sign In
           </Link>
         </div>
@@ -31,11 +31,6 @@ const Landing = () => {
       <main className="container mx-auto px-6 pt-16 pb-32 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
 
-          {/* Subtle label */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-bg-card border border-border-subtle text-xs font-semibold tracking-widest text-zync-cyan mb-8 uppercase">
-            <span className="w-2 h-2 rounded-full bg-zync-cyan animate-pulse"></span>
-            Esports Compatibility Engine
-          </div>
 
           <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight">
             Find teammates who <br className="hidden md:block" />
@@ -48,7 +43,7 @@ const Landing = () => {
             Stop relying on random matchmaking. ZYNC structures and evaluates compatibility across skill, roles, and competitive goals to find the perfect squad.
           </p>
 
-          <Link to="/login" className="inline-flex items-center justify-center px-8 py-4 rounded-md font-bold text-base bg-gradient-to-r from-zync-blue to-zync-purple hover:from-blue-500 hover:to-purple-500 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] text-white">
+          <Link to="/login" className="inline-flex items-center justify-center px-8 py-4 rounded-md font-bold text-base bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 transition-all shadow-lg hover:shadow-xl text-white">
             Find Your Squad
           </Link>
         </div>
@@ -56,66 +51,36 @@ const Landing = () => {
         <div className="grid md:grid-cols-3 gap-6 mt-32">
 
           {/* Feature 1 */}
-          <div className="bg-bg-card border border-border-subtle p-8 rounded-xl hover:border-border-subtle/80 transition-colors relative group overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <div className="text-6xl font-black text-zync-blue">01</div>
+          <div className="bg-[#141A2B]/70 border border-zync-blue/50 p-8 rounded-xl hover:border-zync-blue/80 transition-colors flex flex-col items-center text-center shadow-lg">
+            <div className="w-12 h-12 flex items-center justify-center border border-border-subtle bg-[#080B14] rounded-lg mb-6 text-zync-blue font-bold text-lg">
+              01
             </div>
-            <h3 className="text-sm font-bold tracking-widest text-zync-blue mb-6 uppercase">Supported Games</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm border-b border-border-subtle/50 pb-2">
-                <span className="text-text-secondary">TITLE</span>
-                <span className="font-semibold">BGMI</span>
-              </div>
-              <div className="flex items-center justify-between text-sm border-b border-border-subtle/50 pb-2">
-                <span className="text-text-secondary">TITLE</span>
-                <span className="font-semibold">VALORANT</span>
-              </div>
-              <div className="flex items-center justify-between text-sm border-b border-border-subtle/50 pb-2">
-                <span className="text-text-secondary">TITLE</span>
-                <span className="font-semibold">BRAWL STARS</span>
-              </div>
-            </div>
+            <h3 className="text-lg font-bold text-white mb-3">PLAY YOUR GAMES</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Find teammates across BGMI, Valorant and Brawl Stars.
+            </p>
           </div>
 
           {/* Feature 2 */}
-          <div className="bg-bg-card border border-border-subtle p-8 rounded-xl hover:border-border-subtle/80 transition-colors relative group overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <div className="text-6xl font-black text-zync-purple">02</div>
+          <div className="bg-[#141A2B]/70 border border-zync-purple/50 p-8 rounded-xl hover:border-zync-purple/80 transition-colors flex flex-col items-center text-center shadow-lg">
+            <div className="w-12 h-12 flex items-center justify-center border border-border-subtle bg-[#080B14] rounded-lg mb-6 text-zync-purple font-bold text-lg">
+              02
             </div>
-            <h3 className="text-sm font-bold tracking-widest text-zync-purple mb-6 uppercase">Compatibility Engine</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-xs font-semibold tracking-wider">
-              <div className="bg-bg-secondary border border-border-subtle p-3 rounded text-center">
-                <div className="text-text-secondary mb-1">SKILL</div>
-                <div className="text-zync-cyan">IMMORTAL</div>
-              </div>
-              <div className="bg-bg-secondary border border-border-subtle p-3 rounded text-center">
-                <div className="text-text-secondary mb-1">ROLE</div>
-                <div className="text-zync-cyan">DUELIST</div>
-              </div>
-              <div className="bg-bg-secondary border border-border-subtle p-3 rounded text-center">
-                <div className="text-text-secondary mb-1">PLAYSTYLE</div>
-                <div className="text-zync-cyan">AGGRESSIVE</div>
-              </div>
-              <div className="bg-bg-secondary border border-border-subtle p-3 rounded text-center">
-                <div className="text-text-secondary mb-1">MATCH</div>
-                <div className="text-white">87%</div>
-              </div>
-            </div>
+            <h3 className="text-lg font-bold text-white mb-3">MATCH SMARTER</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Compatibility based on skill, role, availability and playstyle.
+            </p>
           </div>
 
           {/* Feature 3 */}
-          <div className="bg-bg-card border border-border-subtle p-8 rounded-xl hover:border-border-subtle/80 transition-colors relative group overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <div className="text-6xl font-black text-zync-cyan">03</div>
+          <div className="bg-[#141A2B]/70 border border-zync-cyan/50 p-8 rounded-xl hover:border-zync-cyan/80 transition-colors flex flex-col items-center text-center shadow-lg">
+            <div className="w-12 h-12 flex items-center justify-center border border-border-subtle bg-[#080B14] rounded-lg mb-6 text-zync-cyan font-bold text-lg">
+              03
             </div>
-            <h3 className="text-sm font-bold tracking-widest text-zync-cyan mb-6 uppercase">Build Your Squad</h3>
-            <p className="text-text-secondary text-sm leading-relaxed mb-6">
-              Connect with highly compatible players based on accurate data. Create strong connections and build a consistent team roster for competitive tournaments.
+            <h3 className="text-lg font-bold text-white mb-3">BUILD YOUR SQUAD</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Connect with compatible players and turn good matches into lasting teams.
             </p>
-            <div className="flex items-center gap-2 text-xs font-bold tracking-wider text-text-primary">
-              <span className="w-1.5 h-1.5 bg-zync-cyan rounded-full"></span>
-              ROSTER MANAGEMENT
-            </div>
           </div>
 
         </div>

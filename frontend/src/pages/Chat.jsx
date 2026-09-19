@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getOrCreateConversation, getMessages, sendMessage } from '../services/api';
 import ReportModal from '../components/ReportModal';
 import RateModal from '../components/RateModal';
+import Navbar from '../components/Navbar';
 
 const Chat = () => {
   const { userId: targetUserId } = useParams();
@@ -138,6 +139,7 @@ const Chat = () => {
 
   return (
     <div className="min-h-screen bg-bg-primary flex flex-col font-sans">
+      <Navbar />
       {/* Header */}
       <header className="bg-bg-card border-b border-border-subtle px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">

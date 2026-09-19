@@ -14,8 +14,10 @@ export const getMatches = async (req, res) => {
     // 2. Load other eligible user profiles (excluding the current user)
     const allProfiles = await UserProfile.find({ firebaseUid: { $ne: firebaseUid } });
 
+    const selectedGame = req.query.game;
+
     // 3. Process through matching engine
-    const matches = findMatches(currentUserProfile, allProfiles);
+    const matches = findMatches(currentUserProfile, allProfiles, selectedGame);
 
     // 4. Return the sorted candidates
     res.status(200).json({ matches });

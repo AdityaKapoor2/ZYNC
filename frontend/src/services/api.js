@@ -39,8 +39,9 @@ export const updateProfile = async (token, profileData) => {
   });
 };
 
-export const getMatches = async (token) => {
-  return fetchWithAuth('/matches', token, { method: 'GET' });
+export const getMatches = async (token, game) => {
+  const url = game ? `/matches?game=${encodeURIComponent(game)}` : '/matches';
+  return fetchWithAuth(url, token, { method: 'GET' });
 };
 
 // PUBLIC PROFILE

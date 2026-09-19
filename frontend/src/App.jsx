@@ -9,6 +9,7 @@ import Discover from './pages/Discover';
 import Connections from './pages/Connections';
 import PlayerProfile from './pages/PlayerProfile';
 import Chat from './pages/Chat';
+import Inbox from './pages/Inbox';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/discover" element={<Discover />} />
+          <Route path="/inbox" element={<Inbox />} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/player/:id" element={<PlayerProfile />} />
           <Route path="/chat/:userId" element={<Chat />} />
