@@ -141,19 +141,19 @@ const Chat = () => {
     <div className="min-h-screen bg-bg-primary flex flex-col font-sans">
       <Navbar />
       {/* Header */}
-      <header className="bg-bg-card border-b border-border-subtle px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="bg-bg-card border-b border-border-subtle px-4 md:px-6 py-3 md:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 sticky top-0 z-10">
+        <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto min-w-0">
           <button 
             onClick={() => navigate('/connections')}
-            className="text-text-secondary hover:text-white transition-colors"
+            className="text-text-secondary hover:text-white transition-colors whitespace-nowrap shrink-0 text-sm md:text-base"
           >
             ← BACK
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-white leading-tight cursor-pointer hover:text-zync-cyan transition-colors" onClick={() => navigate(`/player/${otherUser?._id}`)}>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base md:text-lg font-bold text-white leading-tight cursor-pointer hover:text-zync-cyan transition-colors truncate" onClick={() => navigate(`/player/${otherUser?._id}`)}>
               {otherUser?.displayName}
             </h1>
-            <div className="flex items-center text-xs tracking-widest font-bold">
+            <div className="flex items-center text-[10px] md:text-xs tracking-widest font-bold mt-0.5">
               {isOnline ? (
                 <span className="text-green-400 flex items-center">
                   <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mr-1"></span>
@@ -165,16 +165,16 @@ const Chat = () => {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end sm:justify-start">
           <button 
             onClick={() => setIsRateModalOpen(true)}
-            className="px-4 py-1.5 rounded font-bold text-xs bg-zync-blue text-white hover:bg-blue-600 transition-colors uppercase tracking-widest"
+            className="flex-1 sm:flex-none px-3 md:px-4 py-2 sm:py-1.5 rounded font-bold text-[10px] md:text-xs bg-zync-blue text-white hover:bg-blue-600 transition-colors uppercase tracking-widest whitespace-nowrap text-center"
           >
             Rate Player
           </button>
           <button 
             onClick={() => setIsReportModalOpen(true)}
-            className="px-4 py-1.5 rounded font-bold text-xs bg-bg-secondary text-red-500 border border-red-500/30 hover:bg-red-500/10 transition-colors uppercase tracking-widest"
+            className="flex-1 sm:flex-none px-3 md:px-4 py-2 sm:py-1.5 rounded font-bold text-[10px] md:text-xs bg-bg-secondary text-red-500 border border-red-500/30 hover:bg-red-500/10 transition-colors uppercase tracking-widest whitespace-nowrap text-center"
           >
             Report
           </button>
@@ -182,14 +182,14 @@ const Chat = () => {
       </header>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-bg-primary to-bg-card/50">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gradient-to-b from-bg-primary to-bg-card/50">
         <div className="max-w-4xl mx-auto flex flex-col gap-4">
           {messages.length === 0 ? (
             <div className="text-center py-12 text-text-secondary">
               <div className="w-16 h-16 bg-bg-secondary rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
                 💬
               </div>
-              <p>This is the beginning of your chat history with {otherUser?.displayName}.</p>
+              <p className="px-4 text-sm md:text-base">This is the beginning of your chat history with {otherUser?.displayName}.</p>
             </div>
           ) : (
             messages.map((msg, index) => {
@@ -198,7 +198,7 @@ const Chat = () => {
               return (
                 <div key={msg._id || index} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                   <div 
-                    className={`max-w-[75%] px-4 py-3 rounded-2xl ${
+                    className={`break-words max-w-[85%] md:max-w-[75%] px-4 py-3 rounded-2xl ${
                       isMine 
                         ? 'bg-gradient-to-br from-zync-blue to-blue-600 text-white rounded-tr-sm' 
                         : 'bg-bg-secondary text-white border border-border-subtle rounded-tl-sm'
@@ -218,21 +218,21 @@ const Chat = () => {
       </div>
 
       {/* Input Area */}
-      <div className="bg-bg-card border-t border-border-subtle p-4">
+      <div className="bg-bg-card border-t border-border-subtle p-3 md:p-4">
         <div className="max-w-4xl mx-auto relative">
-          <form onSubmit={handleSendMessage} className="flex gap-2">
+          <form onSubmit={handleSendMessage} className="flex gap-2 min-w-0">
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={`Message ${otherUser?.displayName}...`}
-              className="flex-1 bg-bg-secondary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-cyan transition-colors"
+              className="flex-1 min-w-0 bg-bg-secondary border border-border-subtle rounded-lg px-3 md:px-4 py-2.5 md:py-3 text-white focus:outline-none focus:border-zync-cyan transition-colors text-sm md:text-base"
               disabled={sending}
             />
             <button
               type="submit"
               disabled={!newMessage.trim() || sending}
-              className="px-6 py-3 bg-zync-purple hover:bg-purple-600 text-white font-bold text-sm uppercase tracking-widest rounded-lg disabled:opacity-50 transition-colors"
+              className="px-4 md:px-6 py-2.5 md:py-3 shrink-0 bg-zync-purple hover:bg-purple-600 text-white font-bold text-xs md:text-sm uppercase tracking-widest rounded-lg disabled:opacity-50 transition-colors whitespace-nowrap"
             >
               Send
             </button>
