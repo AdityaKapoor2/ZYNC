@@ -184,21 +184,21 @@ const Onboarding = () => {
     <div className="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center p-4 relative overflow-hidden font-sans">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
       
-      <div className="w-full max-w-lg bg-bg-card rounded-xl p-8 border border-border-subtle shadow-2xl relative z-10">
-        <div className="text-center mb-8">
-          <img src={zyncLogo} alt="ZYNC Logo" className="w-12 h-12 object-contain mx-auto mb-6" />
-          <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2">
+      <div className="w-full max-w-lg bg-bg-card rounded-xl p-6 md:p-8 border border-border-subtle shadow-2xl relative z-10">
+        <div className="text-center mb-6 md:mb-8">
+          <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain mx-auto mb-4 md:mb-6" />
+          <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-white mb-2">
             {isEditMode ? 'Edit Your Profile' : 'Build Your Profile'}
           </h2>
           <div className="flex justify-center gap-2 mt-4">
-            <div className={`h-1.5 w-12 rounded ${step >= 1 ? 'bg-zync-cyan' : 'bg-bg-secondary'}`}></div>
-            <div className={`h-1.5 w-12 rounded ${step >= 2 ? 'bg-zync-blue' : 'bg-bg-secondary'}`}></div>
-            <div className={`h-1.5 w-12 rounded ${step >= 3 ? 'bg-zync-purple' : 'bg-bg-secondary'}`}></div>
+            <div className={`h-1.5 w-8 md:w-12 rounded ${step >= 1 ? 'bg-zync-cyan' : 'bg-bg-secondary'}`}></div>
+            <div className={`h-1.5 w-8 md:w-12 rounded ${step >= 2 ? 'bg-zync-blue' : 'bg-bg-secondary'}`}></div>
+            <div className={`h-1.5 w-8 md:w-12 rounded ${step >= 3 ? 'bg-zync-purple' : 'bg-bg-secondary'}`}></div>
           </div>
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded text-sm mb-6 font-medium">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded text-sm mb-6 font-medium break-words">
             {error}
           </div>
         )}
@@ -215,18 +215,18 @@ const Onboarding = () => {
                 placeholder="How should we call you?"
               />
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               {isEditMode && (
                 <button
                   onClick={() => navigate('/dashboard')}
-                  className="w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all"
+                  className="w-full sm:w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all"
                 >
                   Cancel
                 </button>
               )}
               <button
                 onClick={handleNextStep1}
-                className={`${isEditMode ? 'w-2/3' : 'w-full'} py-3 rounded-lg font-bold text-sm bg-zync-cyan hover:brightness-110 text-black transition-all`}
+                className={`w-full ${isEditMode ? 'sm:w-2/3' : ''} py-3 rounded-lg font-bold text-sm bg-zync-cyan hover:brightness-110 text-black transition-all`}
               >
                 Next
               </button>
@@ -242,28 +242,28 @@ const Onboarding = () => {
                 <button
                   key={game}
                   onClick={() => handleGameToggle(game)}
-                  className={`py-4 px-6 rounded border transition-all flex items-center justify-between
+                  className={`py-3 md:py-4 px-4 md:px-6 rounded border transition-all flex items-center justify-between
                     ${selectedGames.includes(game) 
                       ? 'bg-zync-blue/10 border-zync-blue text-white' 
                       : 'bg-bg-secondary border-border-subtle text-text-secondary hover:border-gray-500'}`}
                 >
-                  <span className="font-bold">{game}</span>
+                  <span className="font-bold truncate">{game}</span>
                   {selectedGames.includes(game) && (
-                    <svg className="w-5 h-5 text-zync-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                    <svg className="w-5 h-5 text-zync-blue flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                   )}
                 </button>
               ))}
             </div>
-            <div className="flex gap-4 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6">
               <button
                 onClick={() => setStep(1)}
-                className="w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all"
+                className="w-full sm:w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all"
               >
                 Back
               </button>
               <button
                 onClick={handleNextStep2}
-                className="w-2/3 py-3 rounded-lg font-bold text-sm bg-zync-blue hover:brightness-110 text-white transition-all"
+                className="w-full sm:w-2/3 py-3 rounded-lg font-bold text-sm bg-zync-blue hover:brightness-110 text-white transition-all"
               >
                 Next
               </button>
@@ -272,9 +272,9 @@ const Onboarding = () => {
         )}
 
         {step === 3 && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="text-center mb-6">
-              <span className="text-xs font-bold tracking-widest text-zync-purple uppercase bg-zync-purple/10 px-3 py-1 rounded-full">
+          <div className="space-y-5 md:space-y-6 animate-in fade-in">
+            <div className="text-center mb-4 md:mb-6">
+              <span className="text-xs font-bold tracking-widest text-zync-purple uppercase bg-zync-purple/10 px-3 py-1 rounded-full break-words inline-block max-w-full">
                 {selectedGames[currentGameIndex]} Profile ({currentGameIndex + 1}/{selectedGames.length})
               </span>
             </div>
@@ -295,7 +295,7 @@ const Onboarding = () => {
               <select
                 value={gameData[selectedGames[currentGameIndex]]?.playstyle || ''}
                 onChange={(e) => handleGameDataChange('playstyle', e.target.value)}
-                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none"
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none truncate"
               >
                 <option value="" disabled>Select playstyle</option>
                 <option value="Aggressive">Aggressive / Entry</option>
@@ -310,7 +310,7 @@ const Onboarding = () => {
               <select
                 value={gameData[selectedGames[currentGameIndex]]?.communication || ''}
                 onChange={(e) => handleGameDataChange('communication', e.target.value)}
-                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none"
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none truncate"
               >
                 <option value="" disabled>Select communication style</option>
                 <option value="Mic Required">Mic Required - Highly Communicative</option>
@@ -334,7 +334,7 @@ const Onboarding = () => {
             
             <div>
               <label className="block text-xs font-bold tracking-widest text-text-secondary mb-2 uppercase">Roles (Select multiple)</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
                 {['Duelist/Entry', 'Support', 'Controller/Smokes', 'Initiator', 'IGL', 'Flex', 'Sniper', 'Tank'].map(role => (
                   <button
                     key={role}
@@ -345,7 +345,7 @@ const Onboarding = () => {
                         : [...currentRoles, role];
                       handleGameDataChange('roles', newRoles);
                     }}
-                    className={`py-2 px-3 rounded border transition-all text-xs font-bold text-left
+                    className={`py-2 md:py-2.5 px-3 rounded border transition-all text-xs font-bold text-left truncate
                       ${gameData[selectedGames[currentGameIndex]]?.roles?.includes(role)
                         ? 'bg-zync-purple/20 border-zync-purple text-white' 
                         : 'bg-bg-secondary border-border-subtle text-text-secondary hover:border-gray-500'}`}
@@ -358,7 +358,7 @@ const Onboarding = () => {
 
             <div>
               <label className="block text-xs font-bold tracking-widest text-text-secondary mb-2 uppercase">Availability</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
                 {['Weekday Evenings', 'Weekday Days', 'Weekends', 'Late Night', 'Flexible'].map(time => (
                   <button
                     key={time}
@@ -369,7 +369,7 @@ const Onboarding = () => {
                         : [...currentTimes, time];
                       handleGameDataChange('availability', newTimes);
                     }}
-                    className={`py-2 px-3 rounded border transition-all text-xs font-bold text-left
+                    className={`py-2 md:py-2.5 px-3 rounded border transition-all text-xs font-bold text-left truncate
                       ${gameData[selectedGames[currentGameIndex]]?.availability?.includes(time)
                         ? 'bg-zync-purple/20 border-zync-purple text-white' 
                         : 'bg-bg-secondary border-border-subtle text-text-secondary hover:border-gray-500'}`}
@@ -385,7 +385,7 @@ const Onboarding = () => {
               <select
                 value={gameData[selectedGames[currentGameIndex]]?.competitiveGoals || ''}
                 onChange={(e) => handleGameDataChange('competitiveGoals', e.target.value)}
-                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none"
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-purple focus:ring-1 focus:ring-zync-purple transition-colors text-sm appearance-none truncate"
               >
                 <option value="" disabled>Select your goal</option>
                 <option value="Casual / For Fun">Casual / For Fun</option>
@@ -395,7 +395,7 @@ const Onboarding = () => {
               </select>
             </div>
 
-            <div className="flex gap-4 mt-8">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6 md:mt-8">
               <button
                 onClick={() => {
                   if (currentGameIndex > 0) {
@@ -405,14 +405,14 @@ const Onboarding = () => {
                   }
                 }}
                 disabled={loading}
-                className="w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all disabled:opacity-50"
+                className="w-full sm:w-1/3 py-3 rounded-lg font-bold text-sm bg-bg-secondary hover:bg-gray-700 text-white transition-all disabled:opacity-50"
               >
                 Back
               </button>
               <button
                 onClick={handleNextGameInfo}
                 disabled={loading}
-                className="w-2/3 py-3 rounded-lg font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 text-white transition-all disabled:opacity-50"
+                className="w-full sm:w-2/3 py-3 rounded-lg font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 text-white transition-all disabled:opacity-50"
               >
                 {loading ? 'Saving...' : (currentGameIndex < selectedGames.length - 1 ? 'Next Game' : 'Complete Profile')}
               </button>
