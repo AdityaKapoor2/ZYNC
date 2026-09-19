@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getConnections } from '../services/api';
+import { getConnections, removeConnection } from '../services/api';
 import Navbar from '../components/Navbar';
 
 const Connections = () => {
@@ -11,6 +11,29 @@ const Connections = () => {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [connectionToRemove, setConnectionToRemove] = useState(null);
+
+  const handleRemoveClick = (conn) => {
+    setConnectionToRemove(conn);
+  };
+
+  const confirmRemove = async () => {
+    if (!connectionToRemove || !currentUser) return;
+    try {
+      setLoading(true);
+      setError('');
+      const token = await currentUser.getIdToken();
+      await removeConnection(token, connectionToRemove.connectionId);
+      setConnections(prev => prev.filter(c => c.connectionId !== connectionToRemove.connectionId));
+      setConnectionToRemove(null);
+    } catch (err) {
+      console.error("Failed to remove connection:", err);
+      setError("Failed to remove connection.");
+      setConnectionToRemove(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -132,6 +155,12 @@ const Connections = () => {
                       </div>
                       
                       <button 
+                        onClick={() => handleRemoveClick(conn)}
+                        className="px-6 py-2 rounded font-bold text-xs bg-bg-secondary border border-border-subtle hover:border-red-500 hover:text-red-400 text-text-secondary transition-all uppercase tracking-widest w-full md:w-auto text-center"
+                      >
+                        Remove
+                      </button>
+                      <button 
                         onClick={() => navigate(`/chat/${conn.user._id}`)}
                         className="px-6 py-2 rounded font-bold text-xs bg-zync-purple hover:bg-purple-600 text-white transition-all uppercase tracking-widest w-full md:w-auto text-center"
                       >
@@ -145,7 +174,31 @@ const Connections = () => {
           )}
         </section>
 
-
+        {connectionToRemove && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-bg-card border border-border-subtle rounded-md max-w-md w-full p-6 shadow-2xl relative">
+              <h3 className="text-xl font-bold text-white mb-2">Remove connection?</h3>
+              <p className="text-text-secondary mb-8">
+                Are you sure you want to remove <span className="text-white font-bold">{connectionToRemove.user.displayName}</span> from your connections?
+              </p>
+              
+              <div className="flex gap-4 justify-end">
+                <button 
+                  onClick={() => setConnectionToRemove(null)}
+                  className="px-6 py-2 rounded font-bold text-sm bg-bg-secondary border border-border-subtle text-text-secondary hover:text-white transition-all uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmRemove}
+                  className="px-6 py-2 rounded font-bold text-sm bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500 hover:text-white transition-all uppercase tracking-widest"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

@@ -74,6 +74,10 @@ export const rejectConnection = async (token, connectionId) => {
   return fetchWithAuth(`/connections/${connectionId}/reject`, token, { method: 'PUT' });
 };
 
+export const removeConnection = async (token, connectionId) => {
+  return fetchWithAuth(`/connections/${connectionId}`, token, { method: 'DELETE' });
+};
+
 // PRESENCE
 export const setOnlineStatus = async (token) => {
   return fetchWithAuth('/presence/online', token, { method: 'POST' });

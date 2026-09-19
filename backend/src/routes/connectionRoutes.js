@@ -5,7 +5,8 @@ import {
   getSentRequests, 
   acceptRequest, 
   rejectRequest, 
-  getConnections 
+  getConnections,
+  removeConnection
 } from '../controllers/connectionController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 
@@ -37,5 +38,9 @@ router.put('/:connectionId/accept', acceptRequest);
 // PUT /api/connections/:connectionId/reject
 // Reject an incoming request
 router.put('/:connectionId/reject', rejectRequest);
+
+// DELETE /api/connections/:connectionId
+// Remove an existing connection
+router.delete('/:connectionId', removeConnection);
 
 export default router;
