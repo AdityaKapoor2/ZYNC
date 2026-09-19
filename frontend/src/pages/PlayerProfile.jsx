@@ -98,48 +98,48 @@ const PlayerProfile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary p-6 md:p-12 relative overflow-hidden font-sans">
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+    <div className="min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 md:p-12 relative overflow-hidden font-sans">
+      <div className="absolute top-0 right-0 w-[600px] max-w-[100vw] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
       
       <div className="max-w-4xl mx-auto relative z-10">
         <button 
           onClick={() => navigate(-1)}
-          className="mb-8 flex items-center text-text-secondary hover:text-white transition-colors text-sm font-bold tracking-widest uppercase"
+          className="mb-6 md:mb-8 flex items-center text-text-secondary hover:text-white transition-colors text-sm font-bold tracking-widest uppercase"
         >
           ← Back
         </button>
 
-        <div className="bg-bg-card border border-border-subtle rounded-xl p-8 shadow-2xl mb-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-border-subtle pb-8">
-            <div>
-              <h1 className="text-4xl font-extrabold text-white mb-2">{profile.displayName}</h1>
-              <div className="flex items-center gap-4">
-                <p className="text-text-secondary tracking-widest uppercase text-sm">ZYNC Player Profile</p>
+        <div className="bg-bg-card border border-border-subtle rounded-xl p-6 md:p-8 shadow-2xl mb-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6 md:mb-8 border-b border-border-subtle pb-6 md:pb-8">
+            <div className="min-w-0">
+              <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-2 break-words">{profile.displayName}</h1>
+              <div className="flex flex-wrap items-center gap-3 md:gap-4">
+                <p className="text-text-secondary tracking-widest uppercase text-xs md:text-sm">ZYNC Player Profile</p>
                 {profile.reputation && profile.reputation.count >= 5 ? (
-                  <div className="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">
-                    ⭐ {profile.reputation.score.toFixed(1)} / 5.0 <span className="text-text-secondary ml-1 font-medium">({profile.reputation.count} ratings)</span>
+                  <div className="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20 whitespace-nowrap">
+                    ⭐ {profile.reputation.score.toFixed(1)} / 5.0 <span className="text-text-secondary ml-1 font-medium hidden sm:inline">({profile.reputation.count} ratings)</span>
                   </div>
                 ) : (
-                  <div className="text-xs font-bold text-text-secondary bg-bg-secondary px-2 py-1 rounded border border-border-subtle">
-                    ⭐ New <span className="font-medium">· Not enough ratings yet</span>
+                  <div className="text-xs font-bold text-text-secondary bg-bg-secondary px-2 py-1 rounded border border-border-subtle whitespace-nowrap">
+                    ⭐ New <span className="font-medium hidden sm:inline">· Not enough ratings yet</span>
                   </div>
                 )}
               </div>
             </div>
             
-            <div>
+            <div className="w-full md:w-auto shrink-0">
               {connectionStatus === 'connected' && (
-                <button disabled className="px-8 py-3 rounded font-bold text-sm bg-bg-secondary text-zync-cyan border border-zync-cyan/30 uppercase tracking-widest cursor-default">
+                <button disabled className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-bg-secondary text-zync-cyan border border-zync-cyan/30 uppercase tracking-widest cursor-default">
                   Connected
                 </button>
               )}
               {connectionStatus === 'sent' && (
-                <button disabled className="px-8 py-3 rounded font-bold text-sm bg-bg-secondary text-text-secondary border border-border-subtle uppercase tracking-widest cursor-default">
+                <button disabled className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-bg-secondary text-text-secondary border border-border-subtle uppercase tracking-widest cursor-default">
                   Request Sent
                 </button>
               )}
               {connectionStatus === 'incoming' && (
-                <button onClick={() => navigate('/connections')} className="px-8 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple text-white hover:opacity-90 uppercase tracking-widest shadow-lg">
+                <button onClick={() => navigate('/connections')} className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple text-white hover:opacity-90 uppercase tracking-widest shadow-lg">
                   Respond to Request
                 </button>
               )}
@@ -147,7 +147,7 @@ const PlayerProfile = () => {
                 <button 
                   onClick={handleConnect}
                   disabled={actionLoading}
-                  className="px-8 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple text-white hover:opacity-90 transition-all uppercase tracking-widest shadow-lg shadow-zync-purple/20 disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 md:px-8 py-3 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple text-white hover:opacity-90 transition-all uppercase tracking-widest shadow-lg shadow-zync-purple/20 disabled:opacity-50"
                 >
                   {actionLoading ? 'Sending...' : 'Connect'}
                 </button>
@@ -155,18 +155,18 @@ const PlayerProfile = () => {
             </div>
           </div>
 
-          <div className="space-y-12">
+          <div className="space-y-8 md:space-y-12">
             {profile.games?.map((game, idx) => (
-              <div key={idx} className="bg-bg-secondary/50 rounded-lg p-6 border border-border-subtle">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white mb-1">{game.gameName}</h2>
-                    <p className="text-zync-cyan font-mono">IGN: {game.inGameName}</p>
+              <div key={idx} className="bg-bg-secondary/50 rounded-lg p-4 sm:p-6 border border-border-subtle">
+                <div className="flex justify-between items-start mb-6 gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-xl md:text-2xl font-bold text-white mb-1 truncate">{game.gameName}</h2>
+                    <p className="text-zync-cyan font-mono text-sm md:text-base break-all">IGN: {game.inGameName}</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-3xl font-extrabold text-white">{game.skillLevel}</span>
-                    <span className="text-text-secondary text-sm ml-1">/ 100</span>
-                    <p className="text-xs text-text-secondary uppercase tracking-widest mt-1">Skill</p>
+                  <div className="text-right shrink-0">
+                    <span className="text-2xl md:text-3xl font-extrabold text-white">{game.skillLevel}</span>
+                    <span className="text-text-secondary text-xs md:text-sm ml-1">/ 100</span>
+                    <p className="text-[10px] md:text-xs text-text-secondary uppercase tracking-widest mt-1">Skill</p>
                   </div>
                 </div>
 
@@ -175,7 +175,7 @@ const PlayerProfile = () => {
                     <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-3">Roles</h3>
                     <div className="flex flex-wrap gap-2">
                       {game.roles?.map(r => (
-                        <span key={r} className="bg-bg-secondary text-white text-sm px-3 py-1 rounded border border-border-subtle">
+                        <span key={r} className="bg-bg-secondary text-white text-xs md:text-sm px-2 md:px-3 py-1 rounded border border-border-subtle break-words">
                           {r}
                         </span>
                       ))}
@@ -186,25 +186,25 @@ const PlayerProfile = () => {
                     <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-3">Availability</h3>
                     <div className="flex flex-wrap gap-2">
                       {game.availability?.map(a => (
-                        <span key={a} className="bg-zync-purple/10 text-zync-purple text-sm px-3 py-1 rounded border border-zync-purple/30">
+                        <span key={a} className="bg-zync-purple/10 text-zync-purple text-xs md:text-sm px-2 md:px-3 py-1 rounded border border-zync-purple/30 break-words">
                           {a}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border-subtle">
-                    <div>
+                  <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-border-subtle">
+                    <div className="min-w-0">
                       <span className="block text-xs text-text-secondary uppercase tracking-widest mb-1">Playstyle</span>
-                      <span className="font-bold text-white">{game.playstyle || 'N/A'}</span>
+                      <span className="font-bold text-white text-sm md:text-base truncate block">{game.playstyle || 'N/A'}</span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="block text-xs text-text-secondary uppercase tracking-widest mb-1">Comms</span>
-                      <span className="font-bold text-white">{game.communication || 'N/A'}</span>
+                      <span className="font-bold text-white text-sm md:text-base truncate block">{game.communication || 'N/A'}</span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="block text-xs text-text-secondary uppercase tracking-widest mb-1">Goal</span>
-                      <span className="font-bold text-white">{game.competitiveGoals || 'N/A'}</span>
+                      <span className="font-bold text-white text-sm md:text-base truncate block">{game.competitiveGoals || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
