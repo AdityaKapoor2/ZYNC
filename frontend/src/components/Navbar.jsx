@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProfile, getPresenceStatus, setOnlineStatus, setOfflineStatus, getConnectionRequests } from '../services/api';
-import zyncLogo from '../assets/zync-logo.jpg';
+import zyncLogo from '../assets/zync-logo.png';
 
 const Navbar = () => {
   const { currentUser, logout } = useAuth();

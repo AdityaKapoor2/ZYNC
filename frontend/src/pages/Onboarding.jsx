@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { updateProfile, getProfile } from '../services/api';
-import zyncLogo from '../assets/zync-logo.jpg';
+import zyncLogo from '../assets/zync-logo.png';
 
 const SUPPORTED_GAMES = ['Valorant', 'BGMI', 'Brawl Stars'];
 

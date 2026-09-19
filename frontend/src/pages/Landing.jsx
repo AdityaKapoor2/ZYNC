@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-import zyncLogo from '../assets/zync-logo.jpg';
+import zyncLogo from '../assets/zync-logo.png';
 import landingBg from '../assets/landing.png';
 import bgmiLogo from '../assets/bgmi.jpg';
 import valorantLogo from '../assets/valorant.png';

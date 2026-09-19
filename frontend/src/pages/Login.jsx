@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import zyncLogo from '../assets/zync-logo.jpg';
+import zyncLogo from '../assets/zync-logo.png';
+import landingBg from '../assets/landing.png';
 import { verifyAuth, getProfile, setOnlineStatus } from '../services/api';
 
 const Login = () => {
@@ -75,18 +76,35 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center p-4 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden font-sans">
+      {/* Background Image & Overlay */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none z-0">
+        <img
+          src={landingBg}
+          alt="ZYNC Background"
+          className="w-full h-full object-cover object-center opacity-30 blur-[16px] md:blur-3xl"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-bg-primary/80 via-bg-primary/90 to-bg-primary"></div>
+      </div>
+
       {/* Subtle ambient background glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] max-w-[100vw] h-[600px] bg-gradient-to-r from-zync-blue/10 to-zync-purple/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
 
       {/* Navbar back button */}
       <Link to="/" className="absolute top-4 left-4 md:top-8 md:left-8 text-sm font-bold text-text-secondary hover:text-white transition-colors flex items-center gap-2 z-20">
         ← BACK TO HOME
       </Link>
 
-      <div className="w-full max-w-md bg-bg-card rounded-xl p-6 md:p-8 border border-border-subtle shadow-2xl relative z-10">
+      <div className="w-full max-w-md bg-[#0A0F1E]/60 backdrop-blur-xl rounded-2xl p-6 md:p-8 border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative z-10 mt-8 md:mt-0">
         <div className="text-center mb-6 md:mb-8">
-          <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain mx-auto mb-4 md:mb-6" />
+          <div className="inline-flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-[#080B14] rounded-xl flex items-center justify-center overflow-hidden border border-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]">
+              <img src={zyncLogo} alt="ZYNC Logo" className="w-full h-full object-contain" />
+            </div>
+            <span className="text-xl md:text-2xl font-bold tracking-widest text-white">
+              ZYNC
+            </span>
+          </div>
           <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-white mb-2">
             {isLogin ? 'Welcome Back' : 'Join ZYNC'}
           </h2>
@@ -109,7 +127,7 @@ const Login = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-cyan focus:ring-1 focus:ring-zync-cyan transition-colors text-sm"
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-blue/50 focus:ring-1 focus:ring-zync-blue/50 transition-colors text-sm"
               placeholder="gamer@example.com"
             />
           </div>
@@ -120,29 +138,29 @@ const Login = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-bg-primary border border-border-subtle rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-cyan focus:ring-1 focus:ring-zync-cyan transition-colors text-sm"
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-zync-blue/50 focus:ring-1 focus:ring-zync-blue/50 transition-colors text-sm"
               placeholder="••••••••"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-lg font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 transition-all text-white disabled:opacity-50 mt-2"
+            className="w-full py-3 rounded-lg font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-purple hover:brightness-110 transition-all shadow-lg hover:shadow-xl text-white disabled:opacity-50 mt-2"
           >
             {loading ? 'Authenticating...' : (isLogin ? 'Sign In' : 'Create Account')}
           </button>
         </form>
 
         <div className="my-6 flex items-center gap-4">
-          <div className="h-px bg-border-subtle flex-1"></div>
+          <div className="h-px bg-white/10 flex-1"></div>
           <span className="text-xs font-bold text-text-secondary">Or</span>
-          <div className="h-px bg-border-subtle flex-1"></div>
+          <div className="h-px bg-white/10 flex-1"></div>
         </div>
 
         <button
           onClick={handleGoogleAuth}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 py-3 rounded-lg font-bold text-sm bg-white text-black hover:bg-gray-200 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 py-3 rounded-lg font-bold text-sm bg-black/40 text-white/90 border border-white/10 hover:bg-white/5 hover:border-white/20 transition-all disabled:opacity-50 shadow-sm hover:shadow"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -162,6 +180,13 @@ const Login = () => {
             {isLogin ? 'Sign Up' : 'Log In'}
           </button>
         </p>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-8 text-center text-xs text-white/40 tracking-wider relative z-10 flex gap-4">
+        <span className="hover:text-white/60 transition-colors cursor-pointer">Terms</span>
+        <span>&middot;</span>
+        <span className="hover:text-white/60 transition-colors cursor-pointer">Privacy</span>
       </div>
     </div>
   );
