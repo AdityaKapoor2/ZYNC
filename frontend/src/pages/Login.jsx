@@ -80,23 +80,23 @@ const Login = () => {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-zync-purple/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
 
       {/* Navbar back button */}
-      <Link to="/" className="absolute top-8 left-8 text-sm font-bold text-text-secondary hover:text-white transition-colors flex items-center gap-2">
+      <Link to="/" className="absolute top-4 left-4 md:top-8 md:left-8 text-sm font-bold text-text-secondary hover:text-white transition-colors flex items-center gap-2 z-20">
         ← BACK TO HOME
       </Link>
 
-      <div className="w-full max-w-md bg-bg-card rounded-xl p-8 border border-border-subtle shadow-2xl relative z-10">
-        <div className="text-center mb-8">
-          <img src={zyncLogo} alt="ZYNC Logo" className="w-12 h-12 object-contain mx-auto mb-6" />
-          <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2">
+      <div className="w-full max-w-md bg-bg-card rounded-xl p-6 md:p-8 border border-border-subtle shadow-2xl relative z-10">
+        <div className="text-center mb-6 md:mb-8">
+          <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain mx-auto mb-4 md:mb-6" />
+          <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-white mb-2">
             {isLogin ? 'Welcome Back' : 'Join ZYNC'}
           </h2>
-          <p className="text-sm text-text-secondary">
+          <p className="text-sm text-text-secondary px-2">
             {isLogin ? 'Enter your credentials to access your squad.' : 'Create an account to start building your squad.'}
           </p>
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded text-sm mb-6 font-medium">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded text-sm mb-6 font-medium break-words">
             {error}
           </div>
         )}
