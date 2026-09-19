@@ -83,9 +83,9 @@ const Dashboard = () => {
       <Navbar />
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-12">
-        <header className="mb-10">
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-12">
+        <header className="mb-8 md:mb-10">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
             Welcome back{profile?.displayName ? `, ${profile.displayName}` : ''}.
           </h1>
         </header>
@@ -93,33 +93,39 @@ const Dashboard = () => {
 
 
         {/* Profile Stats */}
-        <section className="mb-10">
+        <section className="mb-8 md:mb-10">
           <h2 className="text-sm font-bold tracking-widest text-text-secondary uppercase mb-4">
             My Games
           </h2>
 
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 w-full">
             {profile?.games?.map((game, index) => (
               <div 
                 key={index} 
                 onClick={() => setSelectedGame(game.gameName)}
-                className={`bg-bg-card border rounded-md px-5 py-3 shadow-sm flex items-center justify-between group transition-colors cursor-pointer ${selectedGame === game.gameName ? 'border-zync-cyan shadow-md shadow-zync-cyan/10 bg-bg-secondary/20' : 'border-border-subtle hover:border-border-subtle/80'}`}
+                className="relative rounded-lg p-[1px] bg-gradient-to-r from-yellow-500/70 to-orange-500/70 shadow-sm cursor-pointer group hover:from-yellow-500 hover:to-orange-500 transition-all"
               >
-                <div className="flex items-center gap-4">
-                  <h3 className={`text-base font-bold min-w-[120px] ${selectedGame === game.gameName ? 'text-zync-cyan' : 'text-white'}`}>
-                    {game.gameName}
-                    {selectedGame === game.gameName && <span className="ml-2 text-xs uppercase tracking-widest text-zync-cyan font-bold bg-zync-cyan/10 px-2 py-0.5 rounded">Selected</span>}
-                  </h3>
-                  <div className="flex items-center gap-2 text-xs text-text-secondary font-medium">
+                <div className={`bg-bg-card rounded-lg p-4 md:p-5 h-full flex flex-col gap-3 transition-colors ${selectedGame === game.gameName ? 'shadow-[inset_0_0_15px_rgba(34,211,238,0.1)]' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <h3 className={`text-base md:text-lg font-bold ${selectedGame === game.gameName ? 'text-zync-cyan' : 'text-white'}`}>
+                      {game.gameName}
+                    </h3>
+                    {selectedGame === game.gameName && (
+                      <span className="text-[10px] uppercase tracking-widest text-zync-cyan font-bold bg-zync-cyan/10 px-2 py-0.5 rounded">Selected</span>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary font-medium">
                     <span className="px-2 py-0.5 rounded bg-bg-secondary text-white">{game.skillLevel}</span>
                     <span>&bull;</span>
                     <span className="capitalize">{game.playstyle || 'Flex'}</span>
                     <span>&bull;</span>
                     <span className="capitalize">{game.communication || 'Comms'}</span>
                   </div>
-                </div>
-                <div className="text-xs text-zync-cyan font-bold tracking-wider">
-                  {game.inGameName}
+                  
+                  <div className="text-xs text-zync-cyan font-bold tracking-wider mt-auto pt-1">
+                    {game.inGameName}
+                  </div>
                 </div>
               </div>
             ))}
@@ -127,16 +133,16 @@ const Dashboard = () => {
         </section>
         
         {/* Teammate Discovery Link */}
-        <section className="mt-8 bg-bg-card border border-border-subtle rounded-xl p-8 text-center shadow-md relative overflow-hidden group">
+        <section className="mt-8 bg-bg-card border border-border-subtle rounded-xl p-6 md:p-8 text-center shadow-md relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-zync-blue/5 to-zync-cyan/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
           <div className="relative z-10 flex flex-col items-center">
-            <h3 className="text-xl font-extrabold text-white mb-2 tracking-tight">Ready to find your next teammate?</h3>
-            <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
+            <h3 className="text-lg md:text-xl font-extrabold text-white mb-2 tracking-tight">Ready to find your next teammate?</h3>
+            <p className="text-text-secondary text-xs md:text-sm mb-6 max-w-md mx-auto">
               Discover players who match your games, playstyle, roles, and availability.
             </p>
             <button 
               onClick={() => navigate(`/discover?game=${encodeURIComponent(selectedGame)}`)}
-              className="px-6 py-2.5 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-cyan hover:opacity-90 transition-opacity text-white tracking-widest uppercase"
+              className="px-6 py-2.5 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-cyan hover:opacity-90 transition-opacity text-white tracking-widest uppercase w-full sm:w-auto"
             >
               Find New Teammates
             </button>

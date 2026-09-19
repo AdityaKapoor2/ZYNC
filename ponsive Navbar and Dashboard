@@ -1,0 +1,123 @@
+warning: in the working copy of 'frontend/src/components/Navbar.jsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/frontend/src/components/Navbar.jsx b/frontend/src/components/Navbar.jsx[m
+[1mindex 4a098f6..32515a3 100644[m
+[1m--- a/frontend/src/components/Navbar.jsx[m
+[1m+++ b/frontend/src/components/Navbar.jsx[m
+[36m@@ -145,13 +145,13 @@[m [mconst Navbar = () => {[m
+ [m
+   return ([m
+     <>[m
+[31m-      <nav className="w-full py-6 px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">[m
+[31m-        <div className="flex items-center gap-6">[m
+[31m-          <Link to="/dashboard" className="flex items-center gap-3">[m
+[31m-            <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 object-contain" />[m
+[32m+[m[32m      <nav className="w-full py-4 md:py-6 px-4 md:px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">[m
+[32m+[m[32m        <div className="flex items-center gap-3 md:gap-6">[m
+[32m+[m[32m          <Link to="/dashboard" className="flex items-center gap-2 md:gap-3">[m
+[32m+[m[32m            <img src={zyncLogo} alt="ZYNC Logo" className="w-8 h-8 md:w-10 md:h-10 object-contain" />[m
+             <span className="text-xl font-extrabold tracking-tight text-white hidden md:block">ZYNC</span>[m
+           </Link>[m
+[31m-          <div className="flex items-center gap-6 ml-4">[m
+[32m+[m[32m          <div className="flex items-center gap-4 md:gap-6 ml-2 md:ml-4">[m
+             <Link to="/inbox" className={`relative ${linkClass('/inbox')}`}>[m
+               Inbox[m
+               {hasNotifications && ([m
+[36m@@ -162,7 +162,7 @@[m [mconst Navbar = () => {[m
+           </div>[m
+         </div>[m
+ [m
+[31m-        <div className="flex items-center gap-6">[m
+[32m+[m[32m        <div className="flex items-center gap-3 md:gap-6">[m
+           {currentUser && ([m
+             <div className="hidden md:flex items-center gap-3 pr-4 border-r border-border-subtle">[m
+               <span className={`text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 ${isOnline ? 'text-white' : 'text-text-secondary'}`}>[m
+[1mdiff --git a/frontend/src/pages/Dashboard.jsx b/frontend/src/pages/Dashboard.jsx[m
+[1mindex ce7baed..d5e3e8f 100644[m
+[1m--- a/frontend/src/pages/Dashboard.jsx[m
+[1m+++ b/frontend/src/pages/Dashboard.jsx[m
+[36m@@ -83,9 +83,9 @@[m [mconst Dashboard = () => {[m
+       <Navbar />[m
+ [m
+       {/* Main Content */}[m
+[31m-      <main className="max-w-6xl mx-auto px-6 py-12">[m
+[31m-        <header className="mb-10">[m
+[31m-          <h1 className="text-3xl font-extrabold text-white tracking-tight">[m
+[32m+[m[32m      <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-12">[m
+[32m+[m[32m        <header className="mb-8 md:mb-10">[m
+[32m+[m[32m          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">[m
+             Welcome back{profile?.displayName ? `, ${profile.displayName}` : ''}.[m
+           </h1>[m
+         </header>[m
+[36m@@ -93,33 +93,39 @@[m [mconst Dashboard = () => {[m
+ [m
+ [m
+         {/* Profile Stats */}[m
+[31m-        <section className="mb-10">[m
+[32m+[m[32m        <section className="mb-8 md:mb-10">[m
+           <h2 className="text-sm font-bold tracking-widest text-text-secondary uppercase mb-4">[m
+             My Games[m
+           </h2>[m
+ [m
+[31m-          <div className="flex flex-col gap-2">[m
+[32m+[m[32m          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 w-full">[m
+             {profile?.games?.map((game, index) => ([m
+               <div [m
+                 key={index} [m
+                 onClick={() => setSelectedGame(game.gameName)}[m
+[31m-                className={`bg-bg-card border rounded-md px-5 py-3 shadow-sm flex items-center justify-between group transition-colors cursor-pointer ${selectedGame === game.gameName ? 'border-zync-cyan shadow-md shadow-zync-cyan/10 bg-bg-secondary/20' : 'border-border-subtle hover:border-border-subtle/80'}`}[m
+[32m+[m[32m                className="relative rounded-lg p-[1px] bg-gradient-to-r from-yellow-500/70 to-orange-500/70 shadow-sm cursor-pointer group hover:from-yellow-500 hover:to-orange-500 transition-all"[m
+               >[m
+[31m-                <div className="flex items-center gap-4">[m
+[31m-                  <h3 className={`text-base font-bold min-w-[120px] ${selectedGame === game.gameName ? 'text-zync-cyan' : 'text-white'}`}>[m
+[31m-                    {game.gameName}[m
+[31m-                    {selectedGame === game.gameName && <span className="ml-2 text-xs uppercase tracking-widest text-zync-cyan font-bold bg-zync-cyan/10 px-2 py-0.5 rounded">Selected</span>}[m
+[31m-                  </h3>[m
+[31m-                  <div className="flex items-center gap-2 text-xs text-text-secondary font-medium">[m
+[32m+[m[32m                <div className={`bg-bg-card rounded-lg p-4 md:p-5 h-full flex flex-col gap-3 transition-colors ${selectedGame === game.gameName ? 'shadow-[inset_0_0_15px_rgba(34,211,238,0.1)]' : ''}`}>[m
+[32m+[m[32m                  <div className="flex items-center justify-between">[m
+[32m+[m[32m                    <h3 className={`text-base md:text-lg font-bold ${selectedGame === game.gameName ? 'text-zync-cyan' : 'text-white'}`}>[m
+[32m+[m[32m                      {game.gameName}[m
+[32m+[m[32m                    </h3>[m
+[32m+[m[32m                    {selectedGame === game.gameName && ([m
+[32m+[m[32m                      <span className="text-[10px] uppercase tracking-widest text-zync-cyan font-bold bg-zync-cyan/10 px-2 py-0.5 rounded">Selected</span>[m
+[32m+[m[32m                    )}[m
+[32m+[m[32m                  </div>[m
+[32m+[m[41m                  [m
+[32m+[m[32m                  <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary font-medium">[m
+                     <span className="px-2 py-0.5 rounded bg-bg-secondary text-white">{game.skillLevel}</span>[m
+                     <span>&bull;</span>[m
+                     <span className="capitalize">{game.playstyle || 'Flex'}</span>[m
+                     <span>&bull;</span>[m
+                     <span className="capitalize">{game.communication || 'Comms'}</span>[m
+                   </div>[m
+[31m-                </div>[m
+[31m-                <div className="text-xs text-zync-cyan font-bold tracking-wider">[m
+[31m-                  {game.inGameName}[m
+[32m+[m[41m                  [m
+[32m+[m[32m                  <div className="text-xs text-zync-cyan font-bold tracking-wider mt-auto pt-1">[m
+[32m+[m[32m                    {game.inGameName}[m
+[32m+[m[32m                  </div>[m
+                 </div>[m
+               </div>[m
+             ))}[m
+[36m@@ -127,16 +133,16 @@[m [mconst Dashboard = () => {[m
+         </section>[m
+         [m
+         {/* Teammate Discovery Link */}[m
+[31m-        <section className="mt-8 bg-bg-card border border-border-subtle rounded-xl p-8 text-center shadow-md relative overflow-hidden group">[m
+[32m+[m[32m        <section className="mt-8 bg-bg-card border border-border-subtle rounded-xl p-6 md:p-8 text-center shadow-md relative overflow-hidden group">[m
+           <div className="absolute inset-0 bg-gradient-to-br from-zync-blue/5 to-zync-cyan/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>[m
+           <div className="relative z-10 flex flex-col items-center">[m
+[31m-            <h3 className="text-xl font-extrabold text-white mb-2 tracking-tight">Ready to find your next teammate?</h3>[m
+[31m-            <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">[m
+[32m+[m[32m            <h3 className="text-lg md:text-xl font-extrabold text-white mb-2 tracking-tight">Ready to find your next teammate?</h3>[m
+[32m+[m[32m            <p className="text-text-secondary text-xs md:text-sm mb-6 max-w-md mx-auto">[m
+               Discover players who match your games, playstyle, roles, and availability.[m
+             </p>[m
+             <button [m
+               onClick={() => navigate(`/discover?game=${encodeURIComponent(selectedGame)}`)}[m
+[31m-              className="px-6 py-2.5 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-cyan hover:opacity-90 transition-opacity text-white tracking-widest uppercase"[m
+[32m+[m[32m              className="px-6 py-2.5 rounded font-bold text-sm bg-gradient-to-r from-zync-blue to-zync-cyan hover:opacity-90 transition-opacity text-white tracking-widest uppercase w-full sm:w-auto"[m
+             >[m
+               Find New Teammates[m
+             </button>[m

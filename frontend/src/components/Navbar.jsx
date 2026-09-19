@@ -145,13 +145,13 @@ const Navbar = () => {
 
   return (
     <>
-      <nav className="w-full py-6 px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-6">
-          <Link to="/dashboard" className="flex items-center gap-3">
-            <img src={zyncLogo} alt="ZYNC Logo" className="w-10 h-10 object-contain" />
+      <nav className="w-full py-4 md:py-6 px-4 md:px-8 flex justify-between items-center border-b border-border-subtle bg-bg-primary/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="flex items-center gap-3 md:gap-6">
+          <Link to="/dashboard" className="flex items-center gap-2 md:gap-3">
+            <img src={zyncLogo} alt="ZYNC Logo" className="w-8 h-8 md:w-10 md:h-10 object-contain" />
             <span className="text-xl font-extrabold tracking-tight text-white hidden md:block">ZYNC</span>
           </Link>
-          <div className="flex items-center gap-6 ml-4">
+          <div className="flex items-center gap-4 md:gap-6 ml-2 md:ml-4">
             <Link to="/inbox" className={`relative ${linkClass('/inbox')}`}>
               Inbox
               {hasNotifications && (
@@ -162,7 +162,7 @@ const Navbar = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 md:gap-6">
           {currentUser && (
             <div className="hidden md:flex items-center gap-3 pr-4 border-r border-border-subtle">
               <span className={`text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 ${isOnline ? 'text-white' : 'text-text-secondary'}`}>
