@@ -46,6 +46,11 @@ const userProfileSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  role: {
+    type: String,
+    enum: ['user', 'super_admin'],
+    default: 'user'
+  },
   games: [gameProfileSchema],
   connections: [{
     type: mongoose.Schema.Types.ObjectId,
