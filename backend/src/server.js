@@ -15,9 +15,10 @@ app.use(express.json());
 
 // Connect to Database
 if (process.env.MONGODB_URI) {
-  connectDB();
+  await connectDB();
 } else {
-  console.warn('MONGODB_URI not found in environment variables. Database not connected.');
+  console.error('MONGODB_URI not found in environment variables. Database not connected.');
+  process.exit(1);
 }
 
 // Routes
