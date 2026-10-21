@@ -46,10 +46,29 @@ export const updateProfile = async (req, res) => {
 
     // Only allow these profile fields to be updated.
     // firebaseUid and email must never be changed by the client.
-    const updateData = {
-      displayName: req.body.displayName,
-      games: req.body.games
-    };
+    const updateData = {};
+
+    if (req.body.displayName !== undefined) {
+      if (typeof req.body.displayName !== 'string') {
+        return res.status(400).json({ message: 'Display name must be a string' });
+      }
+
+      const trimmedDisplayName = req.body.displayName.trim();
+
+      if (trimmedDisplayName.length === 0) {
+        return res.status(400).json({ message: 'Display name cannot be empty' });
+      }
+
+      if (trimmedDisplayName.length > 50) {
+        return res.status(400).json({ message: 'Display name cannot exceed 50 characters' });
+      }
+
+      updateData.displayName = trimmedDisplayName;
+    }
+
+    if (req.body.games !== undefined) {
+      updateData.games = req.body.games;
+    }
 
     // Validate supported games
     const supportedGames = ['BGMI', 'Valorant', 'Brawl Stars'];
