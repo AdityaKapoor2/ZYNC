@@ -9,11 +9,13 @@ import {
   removeConnection
 } from '../controllers/connectionController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
+import { enforceActiveUser } from '../middleware/activeMiddleware.js';
 
 const router = express.Router();
 
 // Apply verifyToken middleware to all connection routes
 router.use(verifyToken);
+router.use(enforceActiveUser);
 
 // GET /api/connections
 // Get accepted connections

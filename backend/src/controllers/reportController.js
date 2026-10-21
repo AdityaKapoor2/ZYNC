@@ -1,6 +1,7 @@
 import Report from '../models/Report.js';
 import UserProfile from '../models/UserProfile.js';
 import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 
 // Helper to get the current user profile from Firebase UID
 const getCurrentProfile = async (uid) => {
@@ -27,18 +28,35 @@ export const createReport = async (req, res) => {
     }
 
     // If a conversation context is provided, verify both users were in it
+    let evidenceMessages = [];
     if (conversationId) {
       const conversation = await Conversation.findById(conversationId);
       if (!conversation) {
         return res.status(404).json({ message: 'Conversation not found' });
       }
       
-      const isReporterParticipant = conversation.participants.includes(currentUser._id);
-      const isReportedParticipant = conversation.participants.includes(reportedUserId);
+      const isReporterParticipant = conversation.participants.some(
+        id => id.toString() === currentUser._id.toString()
+      );
+      const isReportedParticipant = conversation.participants.some(
+        id => id.toString() === reportedUser._id.toString()
+      );
       
       if (!isReporterParticipant || !isReportedParticipant) {
         return res.status(403).json({ message: 'Cannot report from a conversation you both are not part of' });
       }
+
+      // Fetch the last 10 messages for evidence snapshot
+      const messages = await Message.find({ conversationId })
+        .sort({ createdAt: -1 })
+        .limit(10);
+      
+      // Reverse to chronological order (oldest -> newest)
+      evidenceMessages = messages.reverse().map(msg => ({
+        senderId: msg.sender,
+        text: msg.text,
+        timestamp: msg.createdAt
+      }));
     }
 
     // Rate limiting / Spam prevention
@@ -60,7 +78,8 @@ export const createReport = async (req, res) => {
       reportedUser: reportedUserId,
       reason,
       description: description?.trim() || '',
-      conversationId: conversationId || undefined
+      conversationId: conversationId || undefined,
+      evidenceMessages
     });
 
     await report.save();

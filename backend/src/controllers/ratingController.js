@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Rating from '../models/Rating.js';
 import UserProfile from '../models/UserProfile.js';
 import Connection from '../models/Connection.js';
@@ -9,6 +10,10 @@ export const createRating = async (req, res) => {
 
     if (!overall || overall < 1 || overall > 5) {
       return res.status(400).json({ message: 'Overall rating must be between 1 and 5.' });
+    }
+
+    if (!ratedUserId || !mongoose.Types.ObjectId.isValid(ratedUserId)) {
+      return res.status(400).json({ message: 'Invalid rated user ID format' });
     }
 
     const raterProfile = await UserProfile.findOne({ firebaseUid: raterFirebaseUid });
@@ -35,32 +40,47 @@ export const createRating = async (req, res) => {
     });
 
     if (!connection) {
-      return res.status(403).json({ message: 'You can only rate accepted connections.' });
+      return res.status(403).json({ message: 'You can only rate users you are connected with.' });
     }
 
     // 24-hour rate limit for rating the SAME user
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentRating = await Rating.findOne({
       rater: raterProfile._id,
-      ratedUser: ratedUserId,
-      createdAt: { $gte: oneDayAgo }
-    });
+      ratedUser: ratedUserId
+    }).sort({ createdAt: -1 });
 
     if (recentRating) {
-      return res.status(429).json({ message: 'You can only rate this player once every 24 hours.' });
+      const timeSinceLastRating = Date.now() - recentRating.createdAt.getTime();
+      const cooldownPeriod = 24 * 60 * 60 * 1000;
+      if (timeSinceLastRating < cooldownPeriod) {
+        const remainingMs = cooldownPeriod - timeSinceLastRating;
+        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+        return res.status(429).json({ message: `You can rate this teammate again in ${remainingHours} hours.` });
+      }
     }
 
-    // Create the rating
-    const newRating = new Rating({
+    // Validate category ratings to prevent Mongoose errors
+    const validateCategory = (val) => val === undefined || val === 0 || (val >= 1 && val <= 5);
+
+    if (!validateCategory(communication) || !validateCategory(teamwork) || 
+        !validateCategory(reliability) || !validateCategory(sportsmanship)) {
+      return res.status(400).json({ message: 'Category ratings must be between 1 and 5.' });
+    }
+
+    const ratingData = {
       rater: raterProfile._id,
       ratedUser: ratedUserId,
       overall,
-      communication,
-      teamwork,
-      reliability,
-      sportsmanship,
-      feedback
-    });
+      feedback: feedback ? feedback.trim() : undefined
+    };
+
+    if (communication >= 1 && communication <= 5) ratingData.communication = communication;
+    if (teamwork >= 1 && teamwork <= 5) ratingData.teamwork = teamwork;
+    if (reliability >= 1 && reliability <= 5) ratingData.reliability = reliability;
+    if (sportsmanship >= 1 && sportsmanship <= 5) ratingData.sportsmanship = sportsmanship;
+
+    // Create the rating
+    const newRating = new Rating(ratingData);
 
     await newRating.save();
 

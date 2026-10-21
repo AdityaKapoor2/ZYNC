@@ -12,6 +12,10 @@ const conversationSchema = new mongoose.Schema({
   },
   lastMessageAt: {
     type: Date
+  },
+  isModeration: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

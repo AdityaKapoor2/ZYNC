@@ -64,7 +64,11 @@ const Login = () => {
         console.error('Failed to set initial online status', err);
       }
       
-      if (!profile.games || profile.games.length === 0) {
+      if (profile.role === 'super_admin') {
+        navigate('/admin');
+      } else if (profile.accountStatus === 'suspended') {
+        navigate('/account-suspended');
+      } else if (!profile.games || profile.games.length === 0) {
         navigate('/onboarding');
       } else {
         navigate('/dashboard');

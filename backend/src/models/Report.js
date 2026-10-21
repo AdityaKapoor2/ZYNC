@@ -41,6 +41,17 @@ const reportSchema = new mongoose.Schema({
     type: String,
     enum: ['none', 'warning', 'reputation_penalty', 'suspension'],
     default: 'none'
+  },
+  evidenceMessages: {
+    type: [{
+      senderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'UserProfile'
+      },
+      text: String,
+      timestamp: Date
+    }],
+    default: []
   }
 }, {
   timestamps: true

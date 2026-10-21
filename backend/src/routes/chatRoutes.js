@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { verifyToken } from '../middleware/authMiddleware.js';
+import { enforceActiveUser } from '../middleware/activeMiddleware.js';
 
 import {
   getConversations,
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(verifyToken);
 
 router.get('/conversations', getConversations);
+router.get('/inbox', getConversations);
 
 router.post('/conversations/:targetUserId', getOrCreateConversation);
 

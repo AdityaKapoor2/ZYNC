@@ -39,14 +39,14 @@ function calculateSkillScore(userSkill, candidateSkill) {
   return { score: Math.round(score), reason };
 }
 
-function calculateRoleScore(userRoles, candidateRoles, isMode2) {
-  if (!userRoles?.length || !candidateRoles?.length) return { score: Math.round((isMode2 ? 18 : 20) / 2), reason: 'Roles unspecified' };
+function calculateRoleScore(userRoles, candidateRoles) {
+  if (!userRoles?.length || !candidateRoles?.length) return { score: 9, reason: 'Roles unspecified' };
 
   let bestScore = 0;
   let reason = 'Conflicting roles';
 
-  const maxScore = isMode2 ? 18 : 20;
-  const sharedScore = isMode2 ? 13 : 15;
+  const maxScore = 18;
+  const sharedScore = 13;
 
   for (const uRole of userRoles) {
     for (const cRole of candidateRoles) {
@@ -57,8 +57,10 @@ function calculateRoleScore(userRoles, candidateRoles, isMode2) {
         }
       }
 
-      const compRoles = ROLE_COMPATIBILITY[uRole] || [];
-      if (compRoles.includes(cRole)) {
+      // Check for bidirectional compatibility edge
+      const uComp = ROLE_COMPATIBILITY[uRole] || [];
+      const cComp = ROLE_COMPATIBILITY[cRole] || [];
+      if (uComp.includes(cRole) || cComp.includes(uRole)) {
         bestScore = maxScore;
         reason = 'Complementary roles';
       }
@@ -68,15 +70,15 @@ function calculateRoleScore(userRoles, candidateRoles, isMode2) {
   return { score: bestScore, reason };
 }
 
-function calculateAvailabilityScore(userAvail, candidateAvail, isMode2) {
+function calculateAvailabilityScore(userAvail, candidateAvail) {
   if (!userAvail?.length || !candidateAvail?.length) return { score: 0, reason: 'No availability specified' };
 
   const overlap = userAvail.filter(slot => candidateAvail.includes(slot));
   if (overlap.length === 0) return { score: 0, reason: 'No shared availability' };
 
-  const maxScore = isMode2 ? 18 : 20;
+  const maxScore = 18;
 
-  // Score based on percentage of the user's availability that overlaps
+  // Score based on percentage of the max availability length
   const overlapRatio = overlap.length / Math.max(userAvail.length, candidateAvail.length);
   const score = Math.round(maxScore * overlapRatio);
 
@@ -87,8 +89,8 @@ function calculateAvailabilityScore(userAvail, candidateAvail, isMode2) {
   return { score, reason };
 }
 
-function calculatePlaystyleScore(userStyle, candidateStyle, isMode2) {
-  const maxScore = isMode2 ? 14 : 15;
+function calculatePlaystyleScore(userStyle, candidateStyle) {
+  const maxScore = 14;
   if (!userStyle || !candidateStyle) return { score: Math.round(maxScore / 2), reason: 'Playstyle unspecified' };
   if (userStyle === candidateStyle) return { score: maxScore, reason: 'Matching playstyle' };
   return { score: Math.round(maxScore / 2), reason: 'Differing playstyles' };
@@ -103,24 +105,35 @@ function calculateCommunicationScore(userComm, candidateComm) {
   return { score: 5, reason: 'Differing communication preference' };
 }
 
-function calculateGoalScore(userGoal, candidateGoal, isMode2) {
-  const maxScore = isMode2 ? 5 : 10;
+function calculateGoalScore(userGoal, candidateGoal) {
+  const maxScore = 5;
   if (!userGoal || !candidateGoal) return { score: Math.round(maxScore / 2), reason: 'Goal unspecified' };
   if (userGoal === candidateGoal) return { score: maxScore, reason: 'Similar competitive goals' };
   return { score: 0, reason: 'Different competitive goals' };
 }
 
-function calculateReputationScore(reputation, isMode2) {
-  if (!isMode2) return { score: 0, reason: '' };
+function calculateReputationScore(userRep, candidateRep) {
+  const getRepScore = (rep) => {
+    if (!rep || !rep.count || rep.count < 5) return 6; // Neutral score out of 10
+    return (rep.score / 5) * 10;
+  };
+
+  const uScore = getRepScore(userRep);
+  const cScore = getRepScore(candidateRep);
   
-  if (!reputation || !reputation.count || reputation.count < 5) {
-    return { score: 6, reason: 'Neutral reputation (insufficient ratings)' };
-  }
-  const score = Math.round((reputation.score / 5) * 10);
+  // Pairwise symmetric reputation score
+  const score = Math.round((uScore + cScore) / 2);
+
   let reason = 'Good community reputation';
-  if (reputation.score < 3.0) reason = 'Lower community reputation';
-  if (reputation.score >= 4.5) reason = 'Excellent community reputation';
+  if (score < 6) reason = 'Lower community reputation';
+  else if (score >= 9) reason = 'Excellent community reputation';
+  else if (uScore === 6 && cScore === 6) reason = 'Neutral community reputation';
+
   return { score, reason };
+}
+
+function isUserOnline(profile) {
+  return profile.isOnline === true && profile.onlineUntil && new Date(profile.onlineUntil) > new Date();
 }
 
 /**
@@ -146,17 +159,17 @@ export const findMatches = (currentUserProfile, allProfiles, selectedGame) => {
       const candidateGame = candidate.games.find(g => g.gameName === userGame.gameName);
       if (!candidateGame) continue; // 2. Hard Filter: Must share game
 
-      const isCurrentlyOnline = candidate.isOnline === true && candidate.onlineUntil && new Date(candidate.onlineUntil) > new Date();
-
-      const isMode2 = !!(candidate.reputation && candidate.reputation.count >= 5);
+      const userOnline = isUserOnline(currentUserProfile);
+      const candidateOnline = isUserOnline(candidate);
+      const eitherOnline = userOnline || candidateOnline;
 
       // 3. Hard Filter: Meaningful availability overlap
-      const avail = calculateAvailabilityScore(userGame.availability, candidateGame.availability, isMode2);
+      const avail = calculateAvailabilityScore(userGame.availability, candidateGame.availability);
       if (avail.score === 0) {
-        if (isCurrentlyOnline) {
+        if (eitherOnline) {
           avail.reason = 'Online Now';
         } else {
-          continue;
+          continue; // Neither is online and no schedule overlap
         }
       }
 
@@ -164,17 +177,17 @@ export const findMatches = (currentUserProfile, allProfiles, selectedGame) => {
       // 4. Hard Filter: Reject extreme skill incompatibility (e.g. diff > 60)
       if (Math.abs((userGame.skillLevel || 50) - (candidateGame.skillLevel || 50)) > 60) continue;
 
-      const role = calculateRoleScore(userGame.roles, candidateGame.roles, isMode2);
-      const playstyle = calculatePlaystyleScore(userGame.playstyle, candidateGame.playstyle, isMode2);
+      const role = calculateRoleScore(userGame.roles, candidateGame.roles);
+      const playstyle = calculatePlaystyleScore(userGame.playstyle, candidateGame.playstyle);
       const comm = calculateCommunicationScore(userGame.communication, candidateGame.communication);
-      const goal = calculateGoalScore(userGame.competitiveGoals, candidateGame.competitiveGoals, isMode2);
-      const rep = calculateReputationScore(candidate.reputation, isMode2);
+      const goal = calculateGoalScore(userGame.competitiveGoals, candidateGame.competitiveGoals);
+      const rep = calculateReputationScore(currentUserProfile.reputation, candidate.reputation);
 
       const totalScore = skill.score + role.score + avail.score + playstyle.score + comm.score + goal.score + rep.score;
 
       // Collect match reasons (max 3 to avoid UI clutter)
       const reasons = [avail.reason, role.reason, goal.reason, playstyle.reason, skill.reason, comm.reason, rep.reason]
-        .filter(r => r && !r.includes('unspecified') && !r.includes('Different') && !r.includes('gap') && !r.includes('Differing') && !r.includes('Conflicting') && !r.includes('insufficient'))
+        .filter(r => r && !r.includes('unspecified') && !r.includes('Different') && !r.includes('gap') && !r.includes('Differing') && !r.includes('Conflicting') && !r.includes('insufficient') && !r.includes('Neutral'))
         .slice(0, 3);
 
       if (!bestGameMatch || totalScore > bestGameMatch.compatibilityScore) {
@@ -190,7 +203,7 @@ export const findMatches = (currentUserProfile, allProfiles, selectedGame) => {
           communication: candidateGame.communication,
           competitiveGoals: candidateGame.competitiveGoals,
           compatibilityScore: totalScore,
-          isOnline: candidate.isOnline === true && candidate.onlineUntil && new Date(candidate.onlineUntil) > new Date(),
+          isOnline: candidateOnline, // We only care if the CANDIDATE is online for UI rendering
           reputation: candidate.reputation,
           breakdown: {
             skill: skill.score,
@@ -199,7 +212,7 @@ export const findMatches = (currentUserProfile, allProfiles, selectedGame) => {
             playstyle: playstyle.score,
             communication: comm.score,
             goal: goal.score,
-            ...(isMode2 ? { reputation: rep.score } : {})
+            reputation: rep.score
           },
           matchReasons: reasons.length > 0 ? reasons : ['Compatible baseline profile']
         };

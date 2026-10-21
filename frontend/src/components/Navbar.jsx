@@ -5,7 +5,7 @@ import { getProfile, getPresenceStatus, setOnlineStatus, setOfflineStatus, getCo
 import zyncLogo from '../assets/zync-logo.png';
 
 const Navbar = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -21,7 +21,8 @@ const Navbar = () => {
   const [presenceLoading, setPresenceLoading] = useState(false);
 
   // Notifications State
-  const [hasNotifications, setHasNotifications] = useState(false);
+  const [hasNotifications, setHasNotifications] = useState(false); // for connection requests
+  const [unreadCount, setUnreadCount] = useState(0); // for in-app notifications
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -53,14 +54,34 @@ const Navbar = () => {
             setOnlineUntil(presence.onlineUntil ? new Date(presence.onlineUntil) : null);
           }
 
-          // Fetch notifications (pending requests)
+          // Fetch pending requests & inbox items
           try {
             const requests = await getConnectionRequests(token);
             if (isMounted && Array.isArray(requests) && requests.length > 0) {
               setHasNotifications(true);
+            } else {
+              const { getConversations } = await import('../services/api');
+              const convs = await getConversations(token);
+              if (isMounted && Array.isArray(convs) && convs.length > 0) {
+                const hasAdminNotice = convs.some(c => c.isModeration || c.lastMessage?.senderRole === 'admin');
+                if (hasAdminNotice) {
+                  setHasNotifications(true);
+                }
+              }
             }
           } catch (e) {
-            console.error('Failed to fetch notifications', e);
+            console.error('Failed to fetch pending requests / inbox items', e);
+          }
+
+          // Fetch unread notifications count
+          try {
+            const { getUnreadNotificationCount } = await import('../services/api');
+            const unreadRes = await getUnreadNotificationCount(token);
+            if (isMounted && unreadRes && unreadRes.count > 0) {
+              setUnreadCount(unreadRes.count);
+            }
+          } catch (e) {
+            console.error('Failed to fetch unread notification count', e);
           }
         } catch (err) {
           // Fallback to email or google display name
@@ -71,7 +92,24 @@ const Navbar = () => {
       }
     };
     fetchName();
-    return () => { isMounted = false; };
+
+    const handleNotificationRead = () => {
+      // Decrement unread count locally when an event fires
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    };
+
+    const handleAllRead = () => {
+      setUnreadCount(0);
+    };
+
+    window.addEventListener('notificationRead', handleNotificationRead);
+    window.addEventListener('notificationsAllRead', handleAllRead);
+
+    return () => { 
+      isMounted = false; 
+      window.removeEventListener('notificationRead', handleNotificationRead);
+      window.removeEventListener('notificationsAllRead', handleAllRead);
+    };
   }, [currentUser]);
 
   // Countdown Timer
@@ -152,6 +190,14 @@ const Navbar = () => {
             <span className="text-xl font-extrabold tracking-tight text-white hidden md:block">ZYNC</span>
           </Link>
           <div className="flex items-center gap-4 md:gap-6 ml-2 md:ml-4">
+            <Link to="/notifications" className={`relative flex items-center gap-1.5 ${linkClass('/notifications')}`}>
+              🔔 <span>Notifications</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-2.5 flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-zync-cyan text-black text-[10px] font-extrabold shadow-lg">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
             <Link to="/inbox" className={`relative ${linkClass('/inbox')}`}>
               Inbox
               {hasNotifications && (
@@ -220,6 +266,22 @@ const Navbar = () => {
               >
                 Edit Profile
               </Link>
+              <Link 
+                to="/support" 
+                onClick={() => setDropdownOpen(false)}
+                className="block px-4 py-2 text-sm text-text-secondary hover:bg-bg-secondary hover:text-white transition-colors"
+              >
+                Contact Support
+              </Link>
+              {isAdmin && (
+                <Link 
+                  to="/admin" 
+                  onClick={() => setDropdownOpen(false)}
+                  className="block px-4 py-2 text-sm font-bold text-zync-cyan hover:bg-bg-secondary hover:brightness-110 transition-colors"
+                >
+                  Admin Portal
+                </Link>
+              )}
               <div className="border-t border-border-subtle my-1"></div>
               <button 
                 onClick={() => {

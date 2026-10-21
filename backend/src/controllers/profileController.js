@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import UserProfile from '../models/UserProfile.js';
 
 export const getProfile = async (req, res) => {
@@ -20,6 +21,10 @@ export const getProfile = async (req, res) => {
 export const getPublicProfile = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
 
     const userProfile = await UserProfile.findById(id)
       .select('-firebaseUid -email');

@@ -51,6 +51,11 @@ const userProfileSchema = new mongoose.Schema({
     enum: ['user', 'super_admin'],
     default: 'user'
   },
+  accountStatus: {
+    type: String,
+    enum: ['active', 'suspended'],
+    default: 'active'
+  },
   games: [gameProfileSchema],
   connections: [{
     type: mongoose.Schema.Types.ObjectId,

@@ -97,7 +97,7 @@ describe('Rating & Reputation System', () => {
         .set('Authorization', 'Bearer uidB')
         .send({ ratedUserId: userC._id.toString(), overall: 5 });
       expect(res.status).toBe(403);
-      expect(res.body.message).toBe('You can only rate accepted connections.');
+      expect(res.body.message).toBe('You can only rate users you are connected with.');
     });
 
     it('rejects rating a pending connection', async () => {
@@ -139,7 +139,7 @@ describe('Rating & Reputation System', () => {
       const res = await request(app).post('/api/ratings')
         .set('Authorization', 'Bearer uidA')
         .send({ ratedUserId: userB._id.toString(), overall: 5, communication: 6 });
-      expect(res.status).toBe(500); // Mongoose validation error throws 500 in current controller
+      expect(res.status).toBe(400); 
     });
   });
 
@@ -183,13 +183,30 @@ describe('Rating & Reputation System', () => {
         .set('Authorization', 'Bearer uidA')
         .send({ ratedUserId: userB._id.toString(), overall: 4 });
       expect(res2.status).toBe(429);
-      expect(res2.body.message).toBe('You can only rate this player once every 24 hours.');
+      expect(res2.body.message).toBe('You can rate this teammate again in 24 hours.');
 
       // 3. B rates A -> SUCCESS
       const res3 = await request(app).post('/api/ratings')
         .set('Authorization', 'Bearer uidB')
         .send({ ratedUserId: userA._id.toString(), overall: 3 });
       expect(res3.status).toBe(201);
+    });
+
+    it('allows rating again after 24 hours', async () => {
+      // 1. Insert a rating from 25 hours ago
+      await Rating.create({
+        rater: userA._id,
+        ratedUser: userB._id,
+        overall: 5,
+        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000)
+      });
+
+      // 2. A rates B again -> SUCCESS
+      const res = await request(app).post('/api/ratings')
+        .set('Authorization', 'Bearer uidA')
+        .send({ ratedUserId: userB._id.toString(), overall: 4 });
+      
+      expect(res.status).toBe(201);
     });
   });
 

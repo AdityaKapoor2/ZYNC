@@ -6,6 +6,15 @@ import ReportModal from '../components/ReportModal';
 import RateModal from '../components/RateModal';
 import Navbar from '../components/Navbar';
 
+const normalizeId = (val) => {
+  if (!val) return '';
+  if (typeof val === 'object' && val !== null) {
+    const extracted = val._id || val.id || val;
+    return extracted ? extracted.toString() : '';
+  }
+  return val.toString();
+};
+
 const Chat = () => {
   const { userId: targetUserId } = useParams();
   const { currentUser } = useAuth();
@@ -41,8 +50,9 @@ const Chat = () => {
       
       // Determine the other participant
       // We don't have our own profile _id immediately, so find the one matching targetUserId
-      const targetUser = conv.participants.find(p => p._id === targetUserId);
-      setOtherUser(targetUser);
+      const targetIdStr = normalizeId(targetUserId);
+      const targetUser = conv?.participants?.find(p => normalizeId(p) === targetIdStr);
+      setOtherUser(targetUser || null);
 
       const msgs = await getMessages(token, conv._id);
       setMessages(msgs);
@@ -193,15 +203,35 @@ const Chat = () => {
             </div>
           ) : (
             messages.map((msg, index) => {
-              const isMine = msg.sender === conversation.participants.find(p => p._id !== targetUserId)?._id;
+              const targetIdStr = normalizeId(targetUserId);
+              const myParticipant = conversation?.participants?.find(p => normalizeId(p) !== targetIdStr);
+              const myId = normalizeId(myParticipant);
+              const senderId = normalizeId(msg?.sender);
+              const isMine = Boolean(myId && senderId && myId === senderId);
+              const isAdminMsg = msg?.senderRole === 'admin';
               
               return (
                 <div key={msg._id || index} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                  {/* Sender identity label & badge */}
+                  <div className="flex items-center gap-1.5 mb-1 px-1">
+                    <span className={`text-xs font-bold ${isAdminMsg ? 'text-red-400' : 'text-text-secondary'}`}>
+                      {msg?.senderDisplayName || (isMine ? 'You' : otherUser?.displayName || 'Player')}
+                    </span>
+                    {isAdminMsg && (
+                      <span className="text-[9px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1">
+                        <span>🛡️</span>
+                        <span>ADMIN</span>
+                      </span>
+                    )}
+                  </div>
+
                   <div 
                     className={`break-words max-w-[85%] md:max-w-[75%] px-4 py-3 rounded-2xl ${
                       isMine 
                         ? 'bg-gradient-to-br from-zync-blue to-blue-600 text-white rounded-tr-sm' 
-                        : 'bg-bg-secondary text-white border border-border-subtle rounded-tl-sm'
+                        : isAdminMsg
+                          ? 'bg-red-500/10 text-white border border-red-500/30 rounded-tl-sm shadow-[0_0_15px_rgba(239,68,68,0.15)]'
+                          : 'bg-bg-secondary text-white border border-border-subtle rounded-tl-sm'
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">{msg.text}</p>

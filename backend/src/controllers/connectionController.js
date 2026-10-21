@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Connection from '../models/Connection.js';
 import UserProfile from '../models/UserProfile.js';
 
@@ -11,6 +12,10 @@ export const sendRequest = async (req, res) => {
   try {
     const { userId } = req.params; // Target user's UserProfile ID
     const { uid } = req.user; // Requester's Firebase UID
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
 
     const requester = await getCurrentProfile(uid);
     if (!requester) {
@@ -103,6 +108,10 @@ export const acceptRequest = async (req, res) => {
     const { connectionId } = req.params;
     const { uid } = req.user;
 
+    if (!mongoose.Types.ObjectId.isValid(connectionId)) {
+      return res.status(400).json({ message: 'Invalid connection ID format' });
+    }
+
     const currentUser = await getCurrentProfile(uid);
     if (!currentUser) {
       return res.status(404).json({ message: 'Your profile not found' });
@@ -144,6 +153,10 @@ export const rejectRequest = async (req, res) => {
   try {
     const { connectionId } = req.params;
     const { uid } = req.user;
+
+    if (!mongoose.Types.ObjectId.isValid(connectionId)) {
+      return res.status(400).json({ message: 'Invalid connection ID format' });
+    }
 
     const currentUser = await getCurrentProfile(uid);
     if (!currentUser) {
@@ -213,6 +226,10 @@ export const removeConnection = async (req, res) => {
   try {
     const { connectionId } = req.params;
     const { uid } = req.user;
+
+    if (!mongoose.Types.ObjectId.isValid(connectionId)) {
+      return res.status(400).json({ message: 'Invalid connection ID format' });
+    }
 
     const currentUser = await getCurrentProfile(uid);
     if (!currentUser) {

@@ -12,6 +12,15 @@ const messageSchema = new mongoose.Schema({
     ref: 'UserProfile',
     required: true
   },
+  senderRole: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
+  senderDisplayName: {
+    type: String,
+    trim: true
+  },
   text: {
     type: String,
     required: true,

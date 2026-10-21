@@ -16,7 +16,7 @@ async function fetchWithAuth(endpoint, token, options = {}) {
   });
 
   const data = await response.json();
-  
+
   if (!response.ok) {
     throw new Error(data.message || 'API request failed');
   }
@@ -42,6 +42,10 @@ export const updateProfile = async (token, profileData) => {
 export const getMatches = async (token, game) => {
   const url = game ? `/matches?game=${encodeURIComponent(game)}` : '/matches';
   return fetchWithAuth(url, token, { method: 'GET' });
+};
+
+export const getMatchExplanation = async (token, targetUserId) => {
+  return fetchWithAuth(`/matches/${targetUserId}/explanation`, token, { method: 'GET' });
 };
 
 // PUBLIC PROFILE
@@ -104,10 +108,10 @@ export const getMessages = async (token, conversationId) => {
   return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, { method: 'GET' });
 };
 
-export const sendMessage = async (token, conversationId, text) => {
-  return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, { 
+export const sendMessage = async (token, conversationId, text, senderContext) => {
+  return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, {
     method: 'POST',
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text, ...(senderContext ? { senderContext } : {}) })
   });
 };
 
@@ -124,5 +128,89 @@ export const submitRating = async (token, ratingData) => {
   return fetchWithAuth('/ratings', token, {
     method: 'POST',
     body: JSON.stringify(ratingData)
+  });
+};
+
+// ADMIN NOTIFICATIONS
+export const createAdminNotification = async (token, notificationData) => {
+  return fetchWithAuth('/admin/notifications', token, {
+    method: 'POST',
+    body: JSON.stringify(notificationData),
+  });
+};
+
+export const getAdminNotificationHistory = async (token, page = 1, limit = 20) => {
+  return fetchWithAuth(`/admin/notifications?page=${page}&limit=${limit}`, token);
+};
+
+// USER NOTIFICATIONS
+export const getUserNotifications = async (token, page = 1, limit = 20) => {
+  return fetchWithAuth(`/notifications?page=${page}&limit=${limit}`, token);
+};
+
+export const getUnreadNotificationCount = async (token) => {
+  return fetchWithAuth('/notifications/unread-count', token);
+};
+
+export const markNotificationAsRead = async (token, id) => {
+  return fetchWithAuth(`/notifications/${id}/read`, token, {
+    method: 'PATCH',
+  });
+};
+
+export const markAllNotificationsAsRead = async (token) => {
+  return fetchWithAuth('/notifications/read-all', token, {
+    method: 'PATCH',
+  });
+};
+
+// SUPPORT / APPEALS
+export const submitAppeal = async (token, message) => {
+  return fetchWithAuth('/support/appeal', token, {
+    method: 'POST',
+    body: JSON.stringify({ message })
+  });
+};
+
+// DEDICATED SUPPORT TICKETS
+export const createSupportTicket = async (token, { category, subject, message }) => {
+  return fetchWithAuth('/support/tickets', token, {
+    method: 'POST',
+    body: JSON.stringify({ category, subject, message })
+  });
+};
+
+export const getUserSupportTickets = async (token) => {
+  return fetchWithAuth('/support/tickets', token);
+};
+
+export const getSupportTicketDetails = async (token, id) => {
+  return fetchWithAuth(`/support/tickets/${id}`, token);
+};
+
+export const replySupportTicket = async (token, id, text) => {
+  return fetchWithAuth(`/support/tickets/${id}/reply`, token, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+};
+
+// STAFF SUPPORT TICKETS
+export const getStaffSupportTickets = async (token, params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  return fetchWithAuth(`/support/admin/tickets${query ? `?${query}` : ''}`, token);
+};
+
+export const updateSupportTicketStaffMeta = async (token, id, meta) => {
+  return fetchWithAuth(`/support/admin/tickets/${id}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(meta)
+  });
+};
+
+export const addSupportTicketInternalNote = async (token, id, note) => {
+  return fetchWithAuth(`/support/admin/tickets/${id}/notes`, token, {
+    method: 'POST',
+    body: JSON.stringify({ note })
   });
 };

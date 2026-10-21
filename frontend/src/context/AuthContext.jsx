@@ -7,6 +7,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebase';
+import { getProfile } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -16,6 +17,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const signup = (email, password) => {
@@ -31,6 +33,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    setUserProfile(null);
     return signOut(auth);
   };
 
@@ -43,8 +46,18 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       
-      // If user logs in, we could optionally hit our backend here 
-      // or we can do it in the Login component to sync profile
+      if (user) {
+        try {
+          const token = await user.getIdToken();
+          const profile = await getProfile(token);
+          setUserProfile(profile);
+        } catch (err) {
+          console.error("Failed to fetch ZYNC profile in AuthContext", err);
+          setUserProfile(null);
+        }
+      } else {
+        setUserProfile(null);
+      }
       
       setLoading(false);
     });
@@ -52,8 +65,12 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+  const isAdmin = userProfile?.role === 'super_admin';
+
   const value = {
     currentUser,
+    userProfile,
+    isAdmin,
     signup,
     login,
     loginWithGoogle,

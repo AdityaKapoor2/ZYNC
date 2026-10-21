@@ -6,7 +6,8 @@ import {
   getConnections,
   getConnectionRequests,
   getSentConnections,
-  sendConnectionRequest
+  sendConnectionRequest,
+  getMatchExplanation
 } from '../services/api';
 import Navbar from '../components/Navbar';
 
@@ -21,6 +22,12 @@ const Discover = () => {
   const [matches, setMatches] = useState([]);
   const [connectionStatuses, setConnectionStatuses] = useState({});
   const [actionLoading, setActionLoading] = useState({});
+  
+  // Explanations state
+  const [explanations, setExplanations] = useState({});
+  const [explanationLoading, setExplanationLoading] = useState({});
+  const [explanationError, setExplanationError] = useState({});
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -75,6 +82,30 @@ const Discover = () => {
       alert(err.message || 'Failed to send request');
     } finally {
       setActionLoading(prev => ({ ...prev, [targetId]: false }));
+    }
+  };
+
+  const handleExplainMatch = async (targetId) => {
+    // If we already have it or are loading it, do nothing or just return
+    if (explanations[targetId] || explanationLoading[targetId]) return;
+
+    try {
+      setExplanationLoading(prev => ({ ...prev, [targetId]: true }));
+      setExplanationError(prev => ({ ...prev, [targetId]: null }));
+      
+      const token = await currentUser.getIdToken();
+      const res = await getMatchExplanation(token, targetId);
+      
+      if (res.available === false) {
+        setExplanationError(prev => ({ ...prev, [targetId]: 'AI explanation is currently unavailable.' }));
+      } else {
+        setExplanations(prev => ({ ...prev, [targetId]: res.explanation }));
+      }
+    } catch (err) {
+      console.error(err);
+      setExplanationError(prev => ({ ...prev, [targetId]: 'AI explanation is currently unavailable.' }));
+    } finally {
+      setExplanationLoading(prev => ({ ...prev, [targetId]: false }));
     }
   };
 
@@ -244,6 +275,34 @@ const Discover = () => {
                         </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* AI Explanation (Visible only if requested or loading) */}
+                  {(explanations[match.userId] || explanationLoading[match.userId] || explanationError[match.userId]) && (
+                    <div className="mb-6 bg-bg-secondary/50 border border-zync-purple/30 rounded-lg p-4 relative">
+                      <div className="absolute -top-3 left-4 bg-bg-card px-2 text-[10px] font-bold text-zync-purple uppercase tracking-widest flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-zync-purple animate-pulse"></span>
+                        AI Analysis
+                      </div>
+                      
+                      {explanationLoading[match.userId] ? (
+                        <p className="text-text-secondary text-xs italic animate-pulse">Analyzing compatibility...</p>
+                      ) : explanationError[match.userId] ? (
+                        <p className="text-red-400 text-xs">{explanationError[match.userId]}</p>
+                      ) : (
+                        <p className="text-white text-sm leading-relaxed">{explanations[match.userId]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Toggle Explanation Button */}
+                  {!explanations[match.userId] && !explanationLoading[match.userId] && !explanationError[match.userId] && (
+                    <button
+                      onClick={() => handleExplainMatch(match.userId)}
+                      className="mb-6 flex items-center gap-2 text-[10px] md:text-xs font-bold text-zync-purple hover:text-white transition-colors uppercase tracking-widest w-fit"
+                    >
+                      ✨ Why this match?
+                    </button>
                   )}
 
                   {/* Actions */}

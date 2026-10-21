@@ -6,6 +6,7 @@ describe('Matching Service', () => {
   const currentUserProfile = {
     _id: new mongoose.Types.ObjectId(),
     displayName: 'UserA',
+    reputation: { count: 10, score: 4.0, categories: {} },
     games: [
       {
         gameName: 'Valorant',
@@ -20,43 +21,7 @@ describe('Matching Service', () => {
     ]
   };
 
-  it('calculates compatibility for candidates with < 5 ratings (Mode 1)', () => {
-    const candidateProfile = {
-      _id: new mongoose.Types.ObjectId(),
-      displayName: 'UserB',
-      reputation: { count: 3, score: 5.0, categories: {} },
-      games: [
-        {
-          gameName: 'Valorant',
-          inGameName: 'UserB#NA1',
-          skillLevel: 50, // Diff 0 -> 25
-          roles: ['Support'], // Complementary -> 20
-          availability: ['mon-eve', 'tue-eve'], // Full overlap -> 20
-          playstyle: 'Aggressive', // Match -> 15
-          communication: 'Voice', // Match -> 10
-          competitiveGoals: 'Rank up' // Match -> 10
-        }
-      ]
-    };
-
-    const matches = findMatches(currentUserProfile, [candidateProfile]);
-    expect(matches.length).toBe(1);
-    const match = matches[0];
-    
-    // Total should be exactly 100 for a perfect match, ignoring reputation
-    expect(match.compatibilityScore).toBe(100);
-    
-    // Reputation should NOT be in the breakdown
-    expect(match.breakdown).toHaveProperty('skill', 25);
-    expect(match.breakdown).toHaveProperty('role', 20);
-    expect(match.breakdown).toHaveProperty('availability', 20);
-    expect(match.breakdown).toHaveProperty('playstyle', 15);
-    expect(match.breakdown).toHaveProperty('communication', 10);
-    expect(match.breakdown).toHaveProperty('goal', 10);
-    expect(match.breakdown).not.toHaveProperty('reputation');
-  });
-
-  it('calculates compatibility for candidates with 5+ ratings (Mode 2)', () => {
+  it('calculates fixed weights out of 100 with symmetric evaluation', () => {
     const candidateProfile = {
       _id: new mongoose.Types.ObjectId(),
       displayName: 'UserC',
@@ -66,11 +31,11 @@ describe('Matching Service', () => {
           gameName: 'Valorant',
           inGameName: 'UserC#NA1',
           skillLevel: 50, // Diff 0 -> 25
-          roles: ['Support'], // Complementary -> 20 (base), Mode2 -> 18
-          availability: ['mon-eve', 'tue-eve'], // Full overlap -> 20 (base), Mode2 -> 18
-          playstyle: 'Aggressive', // Match -> 15 (base), Mode2 -> 14
+          roles: ['Support'], // Complementary -> 18
+          availability: ['mon-eve', 'tue-eve'], // Full overlap -> 18
+          playstyle: 'Aggressive', // Match -> 14
           communication: 'Voice', // Match -> 10
-          competitiveGoals: 'Rank up' // Match -> 10 (base), Mode2 -> 5
+          competitiveGoals: 'Rank up' // Match -> 5
         }
       ]
     };
@@ -79,17 +44,64 @@ describe('Matching Service', () => {
     expect(matches.length).toBe(1);
     const match = matches[0];
     
-    // Mode 2 Breakdown Values should be the RAW BASE VALUES for the /10 normalization
     expect(match.breakdown).toHaveProperty('skill', 25);
     expect(match.breakdown).toHaveProperty('role', 18);
     expect(match.breakdown).toHaveProperty('availability', 18);
     expect(match.breakdown).toHaveProperty('playstyle', 14);
     expect(match.breakdown).toHaveProperty('communication', 10);
     expect(match.breakdown).toHaveProperty('goal', 5);
-    expect(match.breakdown).toHaveProperty('reputation', 10);
     
-    // Total score is weighted: 25 + 18 + 18 + 14 + 10 + 5 + 10 = 100
-    expect(match.compatibilityScore).toBe(100);
+    // UserA: 4.0/5 => 8, UserC: 5.0/5 => 10. Avg = 9.
+    expect(match.breakdown).toHaveProperty('reputation', 9);
+    
+    // Total score is weighted: 25 + 18 + 18 + 14 + 10 + 5 + 9 = 99
+    expect(match.compatibilityScore).toBe(99);
+  });
+
+  it('guarantees compatibility(A, B) === compatibility(B, A)', () => {
+    const profileA = {
+      _id: new mongoose.Types.ObjectId(),
+      displayName: 'UserA',
+      reputation: { count: 10, score: 3.0, categories: {} }, // 6/10
+      isOnline: true,
+      onlineUntil: new Date(Date.now() + 1000 * 60 * 60),
+      games: [{
+        gameName: 'Valorant',
+        inGameName: 'A',
+        skillLevel: 70, // Diff 20
+        roles: ['IGL'], // A is IGL, B is Duelist -> Complementary
+        availability: ['mon-eve'], // Overlap: mon-eve out of 3 total max
+        playstyle: 'Aggressive',
+        communication: 'Voice',
+        competitiveGoals: 'Rank up'
+      }]
+    };
+
+    const profileB = {
+      _id: new mongoose.Types.ObjectId(),
+      displayName: 'UserB',
+      reputation: { count: 1, score: 5.0, categories: {} }, // Neutral 6/10
+      isOnline: false,
+      games: [{
+        gameName: 'Valorant',
+        inGameName: 'B',
+        skillLevel: 50,
+        roles: ['Duelist/Entry'], 
+        availability: ['mon-eve', 'tue-eve', 'wed-eve'],
+        playstyle: 'Passive',
+        communication: 'Ping',
+        competitiveGoals: 'Rank up'
+      }]
+    };
+
+    const matchAtoB = findMatches(profileA, [profileB])[0];
+    const matchBtoA = findMatches(profileB, [profileA])[0];
+
+    // Scores must be identical
+    expect(matchAtoB.compatibilityScore).toBe(matchBtoA.compatibilityScore);
+    
+    // Breakdowns must be identical
+    expect(matchAtoB.breakdown).toEqual(matchBtoA.breakdown);
   });
 
   it('rejects candidate if games do not match', () => {
@@ -109,63 +121,47 @@ describe('Matching Service', () => {
       games: [{ 
         gameName: 'Valorant', 
         inGameName: 'UserE#NA1', 
-        skillLevel: 100, // Diff 50 - >60 ? No, wait. 100-50 = 50. Let's make it 120. Wait, skillLevel max is 100? Let's use 111.
+        skillLevel: 115, 
       }]
     };
-    // Re-create candidate with skill 115
-    candidateProfile.games[0].skillLevel = 115;
     const matches = findMatches(currentUserProfile, [candidateProfile]);
     expect(matches.length).toBe(0);
   });
 
-  it('rejects offline candidate with no meaningful availability overlap', () => {
-    const candidateProfile = {
+  it('rejects offline candidates with no meaningful availability overlap when both are offline', () => {
+    const profileA = {
       _id: new mongoose.Types.ObjectId(),
-      displayName: 'UserF',
-      games: [{ 
-        gameName: 'Valorant', 
-        inGameName: 'UserF#NA1', 
-        skillLevel: 50,
-        availability: ['wed-eve'] // No overlap
-      }],
+      games: [{ gameName: 'Valorant', skillLevel: 50, availability: ['mon'] }],
       isOnline: false
     };
-    const matches = findMatches(currentUserProfile, [candidateProfile]);
+    const profileB = {
+      _id: new mongoose.Types.ObjectId(),
+      games: [{ gameName: 'Valorant', skillLevel: 50, availability: ['tue'] }],
+      isOnline: false
+    };
+    const matches = findMatches(profileA, [profileB]);
     expect(matches.length).toBe(0);
   });
 
-  it('allows candidate with no availability overlap IF they are actively online', () => {
-    const candidateProfile = {
+  it('allows match with no availability overlap IF EITHER is actively online', () => {
+    const profileA = {
       _id: new mongoose.Types.ObjectId(),
-      displayName: 'UserG',
-      games: [{ 
-        gameName: 'Valorant', 
-        inGameName: 'UserG#NA1', 
-        skillLevel: 50,
-        availability: ['wed-eve'] // No overlap
-      }],
-      isOnline: true,
-      onlineUntil: new Date(Date.now() + 1000 * 60 * 60) // Online for another hour
+      games: [{ gameName: 'Valorant', skillLevel: 50, availability: ['mon'] }],
+      isOnline: false
     };
-    const matches = findMatches(currentUserProfile, [candidateProfile]);
-    expect(matches.length).toBe(1);
-    expect(matches[0].breakdown.availability).toBe(0); // Score is still 0
-  });
+    const profileB = {
+      _id: new mongoose.Types.ObjectId(),
+      games: [{ gameName: 'Valorant', skillLevel: 50, availability: ['tue'] }],
+      isOnline: true,
+      onlineUntil: new Date(Date.now() + 1000 * 60 * 60)
+    };
+    
+    const matchesFromA = findMatches(profileA, [profileB]);
+    expect(matchesFromA.length).toBe(1);
+    expect(matchesFromA[0].breakdown.availability).toBe(0);
 
-  it('rejects candidate if onlineUntil is expired despite isOnline true', () => {
-    const candidateProfile = {
-      _id: new mongoose.Types.ObjectId(),
-      displayName: 'UserH',
-      games: [{ 
-        gameName: 'Valorant', 
-        inGameName: 'UserH#NA1', 
-        skillLevel: 50,
-        availability: ['wed-eve'] // No overlap
-      }],
-      isOnline: true,
-      onlineUntil: new Date(Date.now() - 1000 * 60 * 60) // Expired an hour ago
-    };
-    const matches = findMatches(currentUserProfile, [candidateProfile]);
-    expect(matches.length).toBe(0);
+    const matchesFromB = findMatches(profileB, [profileA]);
+    expect(matchesFromB.length).toBe(1);
+    expect(matchesFromB[0].breakdown.availability).toBe(0);
   });
 });

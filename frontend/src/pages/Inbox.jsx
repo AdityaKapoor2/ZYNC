@@ -4,7 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { 
   getConnectionRequests, 
   acceptConnection,
-  rejectConnection
+  rejectConnection,
+  getConversations,
+  getProfile
 } from '../services/api';
 import Navbar from '../components/Navbar';
 
@@ -13,26 +15,43 @@ const Inbox = () => {
   const navigate = useNavigate();
   
   const [incomingRequests, setIncomingRequests] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchRequests = async () => {
+    const fetchInboxData = async () => {
       if (!currentUser) return;
       try {
         setLoading(true);
         const token = await currentUser.getIdToken();
-        const incRes = await getConnectionRequests(token);
-        setIncomingRequests(incRes);
+        const [incRes, convRes, userProfile] = await Promise.all([
+          getConnectionRequests(token).catch(err => {
+            console.error("Failed to load requests:", err);
+            return [];
+          }),
+          getConversations(token).catch(err => {
+            console.error("Failed to load conversations:", err);
+            return [];
+          }),
+          getProfile(token).catch(err => {
+            console.error("Failed to load profile:", err);
+            return null;
+          })
+        ]);
+        setIncomingRequests(Array.isArray(incRes) ? incRes : []);
+        setConversations(Array.isArray(convRes) ? convRes : []);
+        setProfile(userProfile);
       } catch (err) {
-        console.error("Failed to load requests:", err);
-        setError("Failed to load your connection requests.");
+        console.error("Failed to load inbox data:", err);
+        setError("Failed to load your inbox items.");
       } finally {
         setLoading(false);
       }
     };
     
-    fetchRequests();
+    fetchInboxData();
   }, [currentUser]);
 
   const handleAccept = async (connectionId) => {
@@ -66,6 +85,9 @@ const Inbox = () => {
     );
   }
 
+  // Filter conversations that have at least one message for the inbox feed
+  const activeConversations = conversations.filter(c => c.lastMessage || c.isModeration);
+
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden font-sans">
       <Navbar />
@@ -75,9 +97,9 @@ const Inbox = () => {
         <header className="mb-8 md:mb-12 flex justify-between items-end">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-2 tracking-tight">
-              Stay connected with your <span className="text-transparent bg-clip-text bg-gradient-to-r from-zync-blue to-zync-cyan">teammates.</span>
+              Stay connected with your <span className="text-transparent bg-clip-text bg-gradient-to-r from-zync-blue to-zync-cyan">squad.</span>
             </h1>
-            <p className="text-text-secondary text-sm md:text-lg">Manage connection requests and keep up with the people you play with.</p>
+            <p className="text-text-secondary text-sm md:text-lg">Manage messages, official communications, and pending connection requests.</p>
           </div>
         </header>
 
@@ -87,6 +109,94 @@ const Inbox = () => {
           </div>
         )}
 
+        {/* 1. Messages & Official Communications Section */}
+        <section className="mb-12">
+          <h2 className="text-sm font-bold tracking-widest text-text-secondary uppercase mb-4 flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-zync-blue"></span>
+            Messages & Official Notices
+            <div className="h-px bg-border-subtle flex-1 ml-2"></div>
+          </h2>
+
+          {activeConversations.length === 0 ? (
+            <div className="bg-bg-card border border-border-subtle rounded-md p-6 md:p-8 text-center">
+              <p className="text-white font-bold mb-2 text-base md:text-lg">No messages yet.</p>
+              <p className="text-text-secondary text-sm">Direct communications from teammates and official moderation notices will appear here.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 md:gap-3">
+              {activeConversations.map(conv => {
+                const currentUserIdStr = profile?._id?.toString();
+                const otherParticipant = conv.participants?.find(p => {
+                  const pId = (p?._id || p)?.toString();
+                  return pId !== currentUserIdStr;
+                });
+                
+                const isAdmin = conv.isModeration || conv.lastMessage?.senderRole === 'admin';
+                const displayName = isAdmin 
+                  ? (conv.lastMessage?.senderDisplayName || 'ZYNC Super Admin') 
+                  : (otherParticipant?.displayName || 'Player');
+                
+                const preview = conv.lastMessage?.text || 'Conversation opened';
+                const targetId = otherParticipant?._id || otherParticipant;
+
+                return (
+                  <div 
+                    key={conv._id} 
+                    onClick={() => !isAdmin && targetId && navigate(`/chat/${targetId}`)}
+                    className={`bg-bg-card border rounded-md px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between transition-colors gap-4 ${
+                      isAdmin 
+                        ? 'border-red-500/20 bg-red-500/5 cursor-default' 
+                        : 'border-border-subtle hover:bg-bg-secondary/50 cursor-pointer group'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center font-bold text-white border ${
+                        isAdmin 
+                          ? 'bg-red-500/20 border-red-500/40 text-red-400' 
+                          : 'bg-bg-secondary border-border-subtle'
+                      }`}>
+                        {isAdmin ? '🛡️' : (displayName?.charAt(0)?.toUpperCase() || '?')}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className={`text-base font-bold leading-tight truncate ${isAdmin ? 'text-red-400' : 'text-white'}`}>
+                            {displayName}
+                          </h3>
+                          {isAdmin && (
+                            <span className="text-[9px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                              ADMIN
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-text-secondary truncate mt-1">
+                          {preview}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 self-end md:self-center shrink-0">
+                      {conv.lastMessage?.createdAt && (
+                        <span className="text-xs text-text-secondary">
+                          {new Date(conv.lastMessage.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                        </span>
+                      )}
+                      {isAdmin ? (
+                        <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
+                          Official Notice
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-zync-cyan uppercase tracking-wider group-hover:translate-x-1 transition-transform">
+                          Open Chat &rarr;
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* 2. Connection Requests Section */}
         <section className="mb-12">
           <h2 className="text-sm font-bold tracking-widest text-text-secondary uppercase mb-4 flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-zync-cyan"></span>
