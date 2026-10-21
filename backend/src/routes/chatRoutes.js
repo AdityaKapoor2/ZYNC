@@ -9,6 +9,7 @@ import {
   getMessages,
   sendMessage
 } from '../controllers/chatController.js';
+import { messageSendRateLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
@@ -22,6 +23,6 @@ router.post('/conversations/:targetUserId', getOrCreateConversation);
 
 router.get('/conversations/:conversationId/messages', getMessages);
 
-router.post('/conversations/:conversationId/messages', sendMessage);
+router.post('/conversations/:conversationId/messages', messageSendRateLimiter, sendMessage);
 
 export default router;

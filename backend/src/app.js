@@ -18,8 +18,20 @@ import adminRoutes from './routes/adminRoutes.js';
  * Factory function to create an Express app instance with configured CORS and routes.
  * Supports optional custom CORS options for isolated testing across environments.
  */
-export const createApp = (customCorsOptions) => {
+export const createApp = (customCorsOptions, customTrustProxy) => {
   const app = express();
+
+  // Reverse proxy trust setting:
+  // In production behind a single-tier reverse proxy (Render, Fly.io, ALB), defaults to 1.
+  // Configurable via TRUST_PROXY env var (e.g., 'false' for bare servers, '2' for CDN + load balancer).
+  const envTrustProxy = process.env.TRUST_PROXY;
+  const resolvedTrustProxy = customTrustProxy !== undefined
+    ? customTrustProxy
+    : (envTrustProxy !== undefined
+      ? (envTrustProxy === 'true' ? true : envTrustProxy === 'false' ? false : !isNaN(Number(envTrustProxy)) ? Number(envTrustProxy) : envTrustProxy)
+      : 1);
+
+  app.set('trust proxy', resolvedTrustProxy);
 
   // Middleware - CORS must precede express.json() and route definitions
   const corsOptions = customCorsOptions || getCorsOptions();

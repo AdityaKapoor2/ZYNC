@@ -10,6 +10,7 @@ import {
 } from '../controllers/connectionController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { enforceActiveUser } from '../middleware/activeMiddleware.js';
+import { connectionRequestRateLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.get('/sent', getSentRequests);
 
 // POST /api/connections/request/:userId
 // Send a connection request to another user
-router.post('/request/:userId', sendRequest);
+router.post('/request/:userId', connectionRequestRateLimiter, sendRequest);
 
 // PUT /api/connections/:connectionId/accept
 // Accept an incoming request

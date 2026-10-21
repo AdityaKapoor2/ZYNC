@@ -2,6 +2,7 @@ import express from 'express';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { enforceActiveUser } from '../middleware/activeMiddleware.js';
 import { createReport } from '../controllers/reportController.js';
+import { reportCreationRateLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
@@ -9,6 +10,6 @@ const router = express.Router();
 router.use(verifyToken);
 router.use(enforceActiveUser);
 
-router.post('/', createReport);
+router.post('/', reportCreationRateLimiter, createReport);
 
 export default router;
