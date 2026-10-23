@@ -655,4 +655,220 @@ describe('Checkpoint B2: Frontend Inbox Redesign & Realtime Integration', () => 
     });
   });
 
+  describe('9. Inbox Data Flow, Outgoing Visibility & Loading Race Regression Coverage', () => {
+    // Helper replicating the updated conversation processing in Inbox.jsx
+    const processConversations = (rawConvs, currentUserIdStr) => {
+      return (Array.isArray(rawConvs) ? rawConvs : [])
+        .filter(c => c && (c.lastMessage || c.isModeration))
+        .map(c => {
+          const userRead = Array.isArray(c.readState)
+            ? c.readState.find(r => (r.user?._id || r.user)?.toString() === currentUserIdStr)
+            : null;
+
+          let userLastReadSeq = 0;
+          if (userRead && typeof userRead.lastReadSeq === 'number') {
+            userLastReadSeq = userRead.lastReadSeq;
+          } else if (Array.isArray(c.readState) && c.readState.length > 0) {
+            userLastReadSeq = 0;
+          } else {
+            userLastReadSeq = Math.max(0, (c.lastSeq || 1) - 1);
+          }
+
+          const lastSenderIdStr = (c.lastMessage?.sender?._id || c.lastMessage?.sender)?.toString();
+          const isOutgoing = Boolean(currentUserIdStr && lastSenderIdStr === currentUserIdStr);
+          const isUnread = !isOutgoing && ((c.lastSeq || 0) > userLastReadSeq);
+
+          return {
+            ...c,
+            lastReadSeq: userLastReadSeq,
+            isUnread
+          };
+        });
+    };
+
+    it('outgoing message conversations remain visible in inbox feed with isUnread: false', () => {
+      const currentUserId = 'user-alice';
+      const rawConversations = [
+        {
+          _id: 'conv-outgoing',
+          lastSeq: 8,
+          lastMessageAt: '2026-10-23T12:00:00.000Z',
+          lastMessage: {
+            _id: 'msg-8',
+            sender: currentUserId,
+            text: 'I sent this message last'
+          },
+          readState: [
+            { user: currentUserId, lastReadSeq: 8 },
+            { user: 'user-bob', lastReadSeq: 7 }
+          ],
+          participants: [{ _id: 'user-alice' }, { _id: 'user-bob' }]
+        },
+        {
+          _id: 'conv-incoming',
+          lastSeq: 3,
+          lastMessageAt: '2026-10-23T11:00:00.000Z',
+          lastMessage: {
+            _id: 'msg-3',
+            sender: 'user-charlie',
+            text: 'Incoming message from Charlie'
+          },
+          readState: [
+            { user: currentUserId, lastReadSeq: 2 },
+            { user: 'user-charlie', lastReadSeq: 3 }
+          ],
+          participants: [{ _id: 'user-alice' }, { _id: 'user-charlie' }]
+        }
+      ];
+
+      const processed = processConversations(rawConversations, currentUserId);
+      expect(processed).toHaveLength(2);
+
+      const outgoing = processed.find(c => c._id === 'conv-outgoing');
+      expect(outgoing).toBeDefined();
+      expect(outgoing.isUnread).toBe(false);
+      expect(outgoing.lastReadSeq).toBe(8);
+
+      const incoming = processed.find(c => c._id === 'conv-incoming');
+      expect(incoming).toBeDefined();
+      expect(incoming.isUnread).toBe(true);
+      expect(incoming.lastReadSeq).toBe(2);
+    });
+
+    it('filters out empty conversations that lack lastMessage and are not moderation notices', () => {
+      const currentUserId = 'user-alice';
+      const rawConversations = [
+        { _id: 'conv-empty', lastMessage: null, isModeration: false },
+        { _id: 'conv-mod-empty', lastMessage: null, isModeration: true },
+        { _id: 'conv-active', lastMessage: { sender: 'user-bob', seq: 1 }, isModeration: false }
+      ];
+
+      const processed = processConversations(rawConversations, currentUserId);
+      expect(processed).toHaveLength(2);
+      expect(processed.map(c => c._id)).toEqual(['conv-mod-empty', 'conv-active']);
+    });
+
+    it('request ID race condition: quiet fetch superseding initial fetch correctly clears loading state', async () => {
+      let loading = false;
+      const setLoading = (val) => { loading = val; };
+      const fetchReqIdRef = { current: 0 };
+
+      // Simulates fetchInboxData
+      const executeFetch = async (isQuiet, delayMs, fail = false) => {
+        const currentReqId = ++fetchReqIdRef.current;
+        if (!isQuiet) setLoading(true);
+
+        await new Promise(r => setTimeout(r, delayMs));
+
+        if (currentReqId !== fetchReqIdRef.current) {
+          // superseded request
+          return;
+        }
+
+        if (currentReqId === fetchReqIdRef.current) {
+          setLoading(false);
+        }
+      };
+
+      // Initial non-quiet request starts (takes 50ms)
+      const p1 = executeFetch(false, 50);
+      expect(loading).toBe(true);
+
+      // Reconnect quiet request starts immediately (takes 10ms)
+      const p2 = executeFetch(true, 10);
+      expect(loading).toBe(true);
+
+      await Promise.all([p1, p2]);
+
+      // Both requests finished; loading MUST be false, never stuck on true
+      expect(loading).toBe(false);
+    });
+
+    it('resolves otherParticipant accurately using authProfile when local profile state is null', () => {
+      const localProfile = null;
+      const authProfile = { _id: 'user-my-id', displayName: 'My Name' };
+      const effectiveProfile = localProfile || authProfile;
+      const currentUserIdStr = effectiveProfile?._id?.toString();
+
+      const conv = {
+        _id: 'conv-1',
+        participants: [
+          { _id: 'user-my-id', displayName: 'My Name' },
+          { _id: 'user-friend-id', displayName: 'Squad Friend' }
+        ]
+      };
+
+      const otherParticipant = conv.participants?.find(p => {
+        const pId = (p?._id || p)?.toString();
+        if (currentUserIdStr) {
+          return pId !== currentUserIdStr;
+        }
+        return true;
+      });
+
+      expect(otherParticipant).toBeDefined();
+      expect(otherParticipant._id).toBe('user-friend-id');
+      expect(otherParticipant.displayName).toBe('Squad Friend');
+    });
+
+    it('chat:message socket event updates conversation sequence and position without marking unread for outgoing message', () => {
+      const currentUserId = 'user-current';
+      const initialConvs = [
+        {
+          _id: 'conv-1',
+          lastSeq: 3,
+          isUnread: false,
+          lastMessageAt: '2026-10-23T10:00:00.000Z',
+          lastMessage: { sender: currentUserId, seq: 3 }
+        },
+        {
+          _id: 'conv-2',
+          lastSeq: 10,
+          isUnread: false,
+          lastMessageAt: '2026-10-23T10:30:00.000Z',
+          lastMessage: { sender: 'user-friend', seq: 10 }
+        }
+      ];
+
+      // Replicates handleChatMessage
+      const applyChatMessage = (prev, msg, userId) => {
+        const convIdStr = msg.conversationId.toString();
+        const senderIdStr = (msg.sender?._id || msg.sender)?.toString();
+        const isOutgoing = Boolean(userId && senderIdStr === userId);
+
+        const idx = prev.findIndex(c => c._id?.toString() === convIdStr);
+        if (idx < 0) return prev;
+
+        const existing = prev[idx];
+        const msgSeq = typeof msg.seq === 'number' ? msg.seq : (existing.lastSeq || 0) + 1;
+        const isAlreadyRead = typeof existing.lastReadSeq === 'number' && existing.lastReadSeq >= msgSeq;
+        const shouldMarkUnread = !isOutgoing && !isAlreadyRead;
+
+        const updated = {
+          ...existing,
+          lastMessage: { ...(existing.lastMessage || {}), ...msg, seq: msgSeq },
+          lastMessageAt: msg.createdAt || new Date().toISOString(),
+          lastSeq: Math.max(existing.lastSeq || 0, msgSeq),
+          lastReadSeq: isOutgoing ? Math.max(existing.lastReadSeq || 0, msgSeq) : (existing.lastReadSeq || 0),
+          isUnread: shouldMarkUnread
+        };
+        return [updated, ...prev.filter((_, i) => i !== idx)];
+      };
+
+      const outgoingMsg = {
+        conversationId: 'conv-1',
+        sender: currentUserId,
+        seq: 4,
+        createdAt: '2026-10-23T11:00:00.000Z'
+      };
+
+      const updated = applyChatMessage(initialConvs, outgoingMsg, currentUserId);
+      expect(updated).toHaveLength(2);
+      expect(updated[0]._id).toBe('conv-1');
+      expect(updated[0].lastSeq).toBe(4);
+      expect(updated[0].isUnread).toBe(false);
+      expect(updated[1]._id).toBe('conv-2');
+    });
+  });
+
 });

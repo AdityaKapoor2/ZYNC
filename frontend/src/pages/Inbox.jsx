@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
@@ -6,6 +6,7 @@ import {
   getConnectionRequests, 
   acceptConnection,
   rejectConnection,
+  getConversations,
   getInbox,
   getProfile,
   markConversationAsRead
@@ -13,7 +14,7 @@ import {
 import Navbar from '../components/Navbar';
 
 const Inbox = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile: authProfile } = useAuth();
   const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
   
@@ -22,7 +23,12 @@ const Inbox = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const fetchReqIdRef = React.useRef(0);
+  const fetchReqIdRef = useRef(0);
+  const conversationsRef = useRef([]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const fetchInboxData = useCallback(async (isQuiet = false) => {
     if (!currentUser) return;
@@ -30,13 +36,13 @@ const Inbox = () => {
     try {
       if (!isQuiet) setLoading(true);
       const token = await currentUser.getIdToken();
-      const [incRes, convRes, userProfile] = await Promise.all([
+      const [incRes, convsRes, userProfileRes] = await Promise.all([
         getConnectionRequests(token).catch(err => {
           console.error("Failed to load requests:", err);
           return [];
         }),
-        getInbox(token).catch(err => {
-          console.error("Failed to load inbox:", err);
+        getConversations(token).catch(err => {
+          console.error("Failed to load conversations:", err);
           return [];
         }),
         getProfile(token).catch(err => {
@@ -45,19 +51,53 @@ const Inbox = () => {
         })
       ]);
       if (currentReqId !== fetchReqIdRef.current) return;
+
+      const effectiveProfile = userProfileRes || authProfile;
+      const currentUserIdStr = effectiveProfile?._id?.toString();
+
+      const processedConvs = (Array.isArray(convsRes) ? convsRes : [])
+        .filter(c => c && (c.lastMessage || c.isModeration))
+        .map(c => {
+          const userRead = Array.isArray(c.readState)
+            ? c.readState.find(r => (r.user?._id || r.user)?.toString() === currentUserIdStr)
+            : null;
+
+          let userLastReadSeq = 0;
+          if (userRead && typeof userRead.lastReadSeq === 'number') {
+            userLastReadSeq = userRead.lastReadSeq;
+          } else if (Array.isArray(c.readState) && c.readState.length > 0) {
+            userLastReadSeq = 0;
+          } else {
+            userLastReadSeq = Math.max(0, (c.lastSeq || 1) - 1);
+          }
+
+          const lastSenderIdStr = (c.lastMessage?.sender?._id || c.lastMessage?.sender)?.toString();
+          const isOutgoing = Boolean(currentUserIdStr && lastSenderIdStr === currentUserIdStr);
+          const isUnread = !isOutgoing && ((c.lastSeq || 0) > userLastReadSeq);
+
+          return {
+            ...c,
+            lastReadSeq: userLastReadSeq,
+            isUnread
+          };
+        });
+
       setIncomingRequests(Array.isArray(incRes) ? incRes : []);
-      setConversations(Array.isArray(convRes) ? convRes : []);
-      setProfile(userProfile);
+      setConversations(processedConvs);
+      if (userProfileRes) {
+        setProfile(userProfileRes);
+      }
+      setError('');
     } catch (err) {
       if (currentReqId !== fetchReqIdRef.current) return;
       console.error("Failed to load inbox data:", err);
       setError("Failed to load your inbox items.");
     } finally {
-      if (currentReqId === fetchReqIdRef.current && !isQuiet) {
+      if (currentReqId === fetchReqIdRef.current) {
         setLoading(false);
       }
     }
-  }, [currentUser]);
+  }, [currentUser, authProfile]);
 
   useEffect(() => {
     fetchInboxData();
@@ -97,38 +137,82 @@ const Inbox = () => {
       const convIdStr = activity.conversationId.toString();
       const activitySeq = typeof activity.seq === 'number' ? activity.seq : null;
 
+      const existingIndex = conversationsRef.current.findIndex(c => c._id?.toString() === convIdStr);
+      if (existingIndex < 0) {
+        // Conversation item is newly incoming to inbox, refetch inbox items quietly
+        fetchInboxData(true);
+        return;
+      }
+
       setConversations(prev => {
-        const existingIndex = prev.findIndex(c => c._id?.toString() === convIdStr);
-        if (existingIndex >= 0) {
-          const existing = prev[existingIndex];
-          const effectiveSeq = activitySeq || (existing.lastSeq || 0) + 1;
+        const idx = prev.findIndex(c => c._id?.toString() === convIdStr);
+        if (idx < 0) return prev;
+        const existing = prev[idx];
+        const effectiveSeq = activitySeq || (existing.lastSeq || 0) + 1;
 
-          // Do not resurrect stale unread status if message is already read or duplicate old event
-          const isAlreadyRead = typeof existing.lastReadSeq === 'number' && existing.lastReadSeq >= effectiveSeq;
-          const isDuplicateOld = (existing.lastSeq || 0) >= effectiveSeq && !existing.isUnread;
-          const shouldMarkUnread = !isAlreadyRead && !isDuplicateOld;
+        // Do not resurrect stale unread status if message is already read or duplicate old event
+        const isAlreadyRead = typeof existing.lastReadSeq === 'number' && existing.lastReadSeq >= effectiveSeq;
+        const isDuplicateOld = (existing.lastSeq || 0) >= effectiveSeq && !existing.isUnread;
+        const shouldMarkUnread = !isAlreadyRead && !isDuplicateOld;
 
-          const updated = {
-            ...existing,
-            lastMessage: {
-              ...(existing.lastMessage || {}),
-              sender: activity.sender,
-              senderDisplayName: activity.senderDisplayName || existing.lastMessage?.senderDisplayName,
-              activityText: activity.activityText || 'Just messaged you',
-              seq: effectiveSeq,
-              createdAt: activity.createdAt || new Date().toISOString()
-            },
-            lastMessageAt: activity.createdAt || new Date().toISOString(),
-            lastSeq: effectiveSeq,
-            isUnread: shouldMarkUnread
-          };
-          // Move updated conversation to top with deduplication
-          return [updated, ...prev.filter((_, idx) => idx !== existingIndex)];
-        } else {
-          // If conversation item is newly incoming to inbox, refetch inbox items
-          fetchInboxData(true);
-          return prev;
-        }
+        const updated = {
+          ...existing,
+          lastMessage: {
+            ...(existing.lastMessage || {}),
+            sender: activity.sender,
+            senderDisplayName: activity.senderDisplayName || existing.lastMessage?.senderDisplayName,
+            activityText: activity.activityText || 'Just messaged you',
+            seq: effectiveSeq,
+            createdAt: activity.createdAt || new Date().toISOString()
+          },
+          lastMessageAt: activity.createdAt || new Date().toISOString(),
+          lastSeq: effectiveSeq,
+          isUnread: shouldMarkUnread
+        };
+        // Move updated conversation to top with deduplication
+        return [updated, ...prev.filter((_, i) => i !== idx)];
+      });
+    };
+
+    const handleChatMessage = (msg) => {
+      if (!msg || !msg.conversationId) return;
+      const convIdStr = msg.conversationId.toString();
+      const effectiveProfile = profile || authProfile;
+      const currentUserIdStr = effectiveProfile?._id?.toString();
+      const senderIdStr = (msg.sender?._id || msg.sender)?.toString();
+      const isOutgoing = Boolean(currentUserIdStr && senderIdStr === currentUserIdStr);
+
+      const existingIndex = conversationsRef.current.findIndex(c => c._id?.toString() === convIdStr);
+      if (existingIndex < 0) {
+        fetchInboxData(true);
+        return;
+      }
+
+      setConversations(prev => {
+        const idx = prev.findIndex(c => c._id?.toString() === convIdStr);
+        if (idx < 0) return prev;
+        const existing = prev[idx];
+        const msgSeq = typeof msg.seq === 'number' ? msg.seq : (existing.lastSeq || 0) + 1;
+
+        const isAlreadyRead = typeof existing.lastReadSeq === 'number' && existing.lastReadSeq >= msgSeq;
+        const shouldMarkUnread = !isOutgoing && !isAlreadyRead;
+
+        const updated = {
+          ...existing,
+          lastMessage: {
+            ...(existing.lastMessage || {}),
+            sender: msg.sender,
+            senderDisplayName: msg.senderDisplayName || existing.lastMessage?.senderDisplayName,
+            activityText: 'Just messaged you',
+            seq: msgSeq,
+            createdAt: msg.createdAt || new Date().toISOString()
+          },
+          lastMessageAt: msg.createdAt || new Date().toISOString(),
+          lastSeq: Math.max(existing.lastSeq || 0, msgSeq),
+          lastReadSeq: isOutgoing ? Math.max(existing.lastReadSeq || 0, msgSeq) : (existing.lastReadSeq || 0),
+          isUnread: shouldMarkUnread
+        };
+        return [updated, ...prev.filter((_, i) => i !== idx)];
       });
     };
 
@@ -152,13 +236,15 @@ const Inbox = () => {
     };
 
     socket.on('inbox:activity', handleInboxActivity);
+    socket.on('chat:message', handleChatMessage);
     socket.on('inbox:read', handleInboxRead);
 
     return () => {
       socket.off('inbox:activity', handleInboxActivity);
+      socket.off('chat:message', handleChatMessage);
       socket.off('inbox:read', handleInboxRead);
     };
-  }, [socket, fetchInboxData]);
+  }, [socket, fetchInboxData, authProfile, profile]);
 
   const handleAcknowledgeNotice = async (conversationId, lastSeq) => {
     if (!currentUser || !conversationId) return;
@@ -212,7 +298,7 @@ const Inbox = () => {
     );
   }
 
-  // Authoritative receive-only conversations returned by getInbox
+  // Active conversations with lastMessage or moderation notices
   const activeConversations = conversations;
 
   return (
@@ -252,10 +338,17 @@ const Inbox = () => {
           ) : (
             <div className="flex flex-col gap-2 md:gap-3">
               {activeConversations.map(conv => {
-                const currentUserIdStr = profile?._id?.toString();
+                const effectiveProfile = profile || authProfile;
+                const currentUserIdStr = effectiveProfile?._id?.toString();
                 const otherParticipant = conv.participants?.find(p => {
                   const pId = (p?._id || p)?.toString();
-                  return pId !== currentUserIdStr;
+                  if (currentUserIdStr) {
+                    return pId !== currentUserIdStr;
+                  }
+                  if (p?.firebaseUid && currentUser?.uid) {
+                    return p.firebaseUid !== currentUser.uid;
+                  }
+                  return true;
                 });
                 
                 const isAdmin = conv.isModeration || conv.lastMessage?.senderRole === 'admin';
