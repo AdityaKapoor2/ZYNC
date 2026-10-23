@@ -4,6 +4,7 @@ import { onIdTokenChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { useAuth } from './AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { SOCKET_URL } from '../config/api';
 
 const SocketContext = createContext({
   socket: null,
@@ -13,8 +14,6 @@ const SocketContext = createContext({
 export const useSocket = () => {
   return useContext(SocketContext);
 };
-
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 export const SocketProvider = ({ children }) => {
   const { currentUser, userProfile, isAdmin } = useAuth();
