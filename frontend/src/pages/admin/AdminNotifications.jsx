@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { createAdminNotification, getAdminNotificationHistory } from '../../services/api';
 
 const SUPPORTED_GAMES = ['BGMI', 'Brawl Stars', 'Valorant'];
+
+const generateIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'idemp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+};
 
 const AdminNotifications = () => {
   const { currentUser } = useAuth();
@@ -13,6 +20,12 @@ const AdminNotifications = () => {
   const [recipientId, setRecipientId] = useState('');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+
+  // Stable idempotency key per intentional submission (retained on retry, refreshed on success)
+  const idempotencyKeyRef = useRef(null);
+  if (!idempotencyKeyRef.current) {
+    idempotencyKeyRef.current = generateIdempotencyKey();
+  }
   
   // UI State
   const [sending, setSending] = useState(false);
@@ -78,6 +91,7 @@ const AdminNotifications = () => {
         audienceType,
         title: title.trim(),
         message: message.trim(),
+        idempotencyKey: idempotencyKeyRef.current,
       };
 
       if (audienceType === 'game') payload.targetGame = targetGame;
@@ -87,7 +101,8 @@ const AdminNotifications = () => {
       
       setSuccess(`Successfully sent notification to ${res.recipientCount} user(s).`);
       
-      // Reset form
+      // Reset form and generate fresh idempotency key for next distinct broadcast
+      idempotencyKeyRef.current = generateIdempotencyKey();
       setTitle('');
       setMessage('');
       setRecipientId('');
@@ -97,6 +112,7 @@ const AdminNotifications = () => {
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to send notification.');
+      // idempotencyKeyRef.current is preserved on retry
     } finally {
       setSending(false);
     }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
 import UserProfile from '../src/models/UserProfile.js';
@@ -170,10 +171,11 @@ describe('Recipient-Side Visibility of Super Admin Messages', () => {
       .set('Authorization', 'Bearer reporter_uid');
 
     expect(msgsRes.status).toBe(200);
-    expect(msgsRes.body).toHaveLength(1);
-    expect(msgsRes.body[0].text).toBe('Thank you for your report. We are reviewing evidence.');
-    expect(msgsRes.body[0].senderRole).toBe('admin');
-    expect(msgsRes.body[0].senderDisplayName).toBe('ZYNC Super Admin');
+    const msgs = msgsRes.body.messages || msgsRes.body;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].text).toBe('Thank you for your report. We are reviewing evidence.');
+    expect(msgs[0].senderRole).toBe('admin');
+    expect(msgs[0].senderDisplayName).toBe('ZYNC Super Admin');
   });
 
   it('5. The recipient receives a discoverable Inbox item linking to the correct Conversation', async () => {
@@ -226,7 +228,7 @@ describe('Recipient-Side Visibility of Super Admin Messages', () => {
       .set('Authorization', `Bearer ${freshToken}`);
 
     expect(refetchMessages.status).toBe(200);
-    const msg = refetchMessages.body[0];
+    const msg = (refetchMessages.body.messages || refetchMessages.body)[0];
     expect(msg.senderRole).toBe('admin');
     expect(msg.senderDisplayName).toBe('ZYNC Super Admin');
     expect(msg.text).toBe('Persistent moderation warning.');
@@ -314,13 +316,13 @@ describe('Recipient-Side Visibility of Super Admin Messages', () => {
       .set('Authorization', 'Bearer reported_uid');
 
     expect(msgsRes.status).toBe(200);
-    expect(msgsRes.body).toHaveLength(1);
+    expect(msgsRes.body.messages || msgsRes.body).toHaveLength(1);
 
     // Suspended user can reply as user
     const replyRes = await request(app)
       .post(`/api/chat/conversations/${convId}/messages`)
       .set('Authorization', 'Bearer reported_uid')
-      .send({ text: 'I understand, submitting additional evidence now.' });
+      .send({ text: 'I understand, submitting additional evidence now.', clientMessageId: crypto.randomUUID() });
 
     expect(replyRes.status).toBe(201);
     expect(replyRes.body.senderRole).toBe('user');
@@ -387,7 +389,7 @@ describe('Recipient-Side Visibility of Super Admin Messages', () => {
     const msgRes = await request(app)
       .post(`/api/chat/conversations/${connectedRes.body._id}/messages`)
       .set('Authorization', 'Bearer reporter_uid')
-      .send({ text: 'Hello friend!' });
+      .send({ text: 'Hello friend!', clientMessageId: crypto.randomUUID() });
 
     expect(msgRes.status).toBe(201);
     expect(msgRes.body.senderRole).toBe('user');

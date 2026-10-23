@@ -1,14 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import Navbar from '../components/Navbar';
 import {
   getUserNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead
 } from '../services/api';
+import { broadcastNotificationAction } from '../services/notificationSync';
+
+export function extractTicketIdentifier(notif) {
+  if (!notif) return null;
+
+  // 1. Explicit property if present in payload
+  if (typeof notif.ticketNumber === 'string' && notif.ticketNumber.trim()) {
+    return notif.ticketNumber.trim();
+  }
+  if (typeof notif.ticketId === 'string' && notif.ticketId.trim()) {
+    return notif.ticketId.trim();
+  }
+
+  // 2. Bracketed or word-bounded ticket number in title (e.g. "[TCK-20261023-1001]")
+  const title = typeof notif.title === 'string' ? notif.title : '';
+  const titleMatch = title.match(/\[(TCK-[A-Za-z0-9-]+)\]/i) || title.match(/\b(TCK-[A-Za-z0-9-]+)\b/i);
+  if (titleMatch) {
+    return titleMatch[1];
+  }
+
+  // 3. Bracketed or word-bounded ticket number in message
+  const message = typeof notif.message === 'string' ? notif.message : '';
+  const messageMatch = message.match(/\[(TCK-[A-Za-z0-9-]+)\]/i) || message.match(/\b(TCK-[A-Za-z0-9-]+)\b/i);
+  if (messageMatch) {
+    return messageMatch[1];
+  }
+
+  return null;
+}
+
+export function isAppealSubmission(notif) {
+  if (!notif || typeof notif.title !== 'string') return false;
+  return notif.title.trim().toLowerCase() === 'new appeal submitted';
+}
 
 const Notifications = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile, isAdmin } = useAuth();
+  const { socket, isConnected } = useSocket();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -16,27 +54,141 @@ const Notifications = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => {
-    fetchNotifications();
-    // eslint-disable-next-line
-  }, [page]);
+  const seenLiveIdsRef = useRef(new Set());
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
+    if (!currentUser) return;
     setLoading(true);
     setError('');
     try {
       const token = await currentUser.getIdToken();
       const res = await getUserNotifications(token, page, 20);
-      setNotifications(res.notifications);
-      setTotalPages(res.totalPages);
-      setTotalCount(res.totalCount);
+      const items = res?.notifications || [];
+      setNotifications(items);
+      setTotalPages(res?.totalPages || 1);
+      setTotalCount(res?.totalCount || 0);
+
+      // Track loaded IDs to avoid duplicate insertion from concurrent socket events
+      items.forEach((n) => {
+        if (n?._id) seenLiveIdsRef.current.add(n._id);
+      });
     } catch (err) {
       console.error(err);
       setError('Failed to load notifications.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser, page]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  // Reconcile current page after socket reconnects to recover missed notifications
+  const wasConnectedRef = useRef(isConnected);
+  useEffect(() => {
+    if (isConnected && !wasConnectedRef.current) {
+      fetchNotifications();
+    }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected, fetchNotifications]);
+
+  // Realtime notification:new event listener
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewNotification = (notif) => {
+      if (!notif || !notif._id) return;
+
+      if (seenLiveIdsRef.current.has(notif._id)) {
+        return; // Prevent duplicate display or duplicate total increment
+      }
+      seenLiveIdsRef.current.add(notif._id);
+
+      if (page === 1) {
+        setNotifications((prev) => {
+          if (prev.some((n) => n._id === notif._id)) {
+            return prev;
+          }
+          const next = [notif, ...prev];
+          return next.length > 20 ? next.slice(0, 20) : next;
+        });
+        setTotalCount((prev) => {
+          const next = prev + 1;
+          setTotalPages(Math.max(1, Math.ceil(next / 20)));
+          return next;
+        });
+      } else {
+        // On later pages, preserve existing page view but update total count and page ceiling
+        setTotalCount((prev) => {
+          const next = prev + 1;
+          setTotalPages(Math.max(1, Math.ceil(next / 20)));
+          return next;
+        });
+      }
+    };
+
+    const handleSocketRead = (data) => {
+      const readId = data?._id;
+      if (readId) {
+        setNotifications((prev) =>
+          prev.map((n) => (n._id === readId ? { ...n, read: true } : n))
+        );
+      }
+    };
+
+    const handleSocketReadAll = (data) => {
+      const cutoffTime = data?.readAt ? new Date(data.readAt).getTime() : Date.now();
+      setNotifications((prev) =>
+        prev.map((n) => {
+          if (!n.createdAt) return { ...n, read: true };
+          const itemTime = new Date(n.createdAt).getTime();
+          return itemTime <= cutoffTime ? { ...n, read: true } : n;
+        })
+      );
+    };
+
+    socket.on('notification:new', handleNewNotification);
+    socket.on('notification:read', handleSocketRead);
+    socket.on('notification:read_all', handleSocketReadAll);
+
+    return () => {
+      socket.off('notification:new', handleNewNotification);
+      socket.off('notification:read', handleSocketRead);
+      socket.off('notification:read_all', handleSocketReadAll);
+    };
+  }, [socket, page]);
+
+  // Listen for local and cross-tab read events to keep list in sync
+  useEffect(() => {
+    const handleRead = (e) => {
+      const readId = e.detail?.id;
+      if (readId) {
+        setNotifications((prev) =>
+          prev.map((n) => (n._id === readId ? { ...n, read: true } : n))
+        );
+      }
+    };
+
+    const handleAllRead = (e) => {
+      const cutoffTime = e.detail?.readAt ? new Date(e.detail.readAt).getTime() : Date.now();
+      setNotifications((prev) =>
+        prev.map((n) => {
+          if (!n.createdAt) return { ...n, read: true };
+          const itemTime = new Date(n.createdAt).getTime();
+          return itemTime <= cutoffTime ? { ...n, read: true } : n;
+        })
+      );
+    };
+
+    window.addEventListener('notificationRead', handleRead);
+    window.addEventListener('notificationsAllRead', handleAllRead);
+
+    return () => {
+      window.removeEventListener('notificationRead', handleRead);
+      window.removeEventListener('notificationsAllRead', handleAllRead);
+    };
+  }, []);
 
   const [pendingReadIds, setPendingReadIds] = useState(new Set());
 
@@ -58,8 +210,13 @@ const Notifications = () => {
         prev.map((n) => (n._id === id ? { ...n, read: true } : n))
       );
       
-      // Notify Navbar to decrement count
-      window.dispatchEvent(new Event('notificationRead'));
+      // Notify Navbar in current tab
+      window.dispatchEvent(new CustomEvent('notificationRead', { detail: { id } }));
+
+      // Broadcast to other tabs for this user
+      if (currentUser?.uid) {
+        broadcastNotificationAction({ type: 'read', id, userId: currentUser.uid });
+      }
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
       setError('Failed to update notification status. Please try again.');
@@ -75,18 +232,62 @@ const Notifications = () => {
   const handleMarkAllAsRead = async () => {
     try {
       const token = await currentUser.getIdToken();
-      await markAllNotificationsAsRead(token);
+      const res = await markAllNotificationsAsRead(token);
       
-      // Update local state immediately on success
+      const cutoffTime = res?.readAt ? new Date(res.readAt).getTime() : Date.now();
+
+      // Update local state for eligible items at or before cutoff
       setNotifications((prev) =>
-        prev.map((n) => ({ ...n, read: true }))
+        prev.map((n) => {
+          if (!n.createdAt) return { ...n, read: true };
+          const itemTime = new Date(n.createdAt).getTime();
+          return itemTime <= cutoffTime ? { ...n, read: true } : n;
+        })
       );
       
-      // Notify Navbar that all notifications are read
-      window.dispatchEvent(new Event('notificationsAllRead'));
+      // Notify Navbar in current tab
+      window.dispatchEvent(new CustomEvent('notificationsAllRead', { detail: { readAt: res?.readAt } }));
+
+      // Broadcast to other tabs for this user
+      if (currentUser?.uid) {
+        broadcastNotificationAction({ type: 'readAll', userId: currentUser.uid, readAt: res?.readAt });
+      }
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
       setError('Failed to mark all notifications as read. Please try again.');
+    }
+  };
+
+  const handleNotificationClick = async (notif) => {
+    if (!notif.read) {
+      handleMarkAsRead(notif._id);
+    }
+
+    const ticketId = extractTicketIdentifier(notif);
+    const isAppeal = isAppealSubmission(notif);
+
+    if (!ticketId && !isAppeal) {
+      // Unrelated notification: marked as read, preserve normal behavior
+      return;
+    }
+
+    // Suspended users can only access their appeal interface
+    if (userProfile?.accountStatus === 'suspended' && !isAdmin) {
+      navigate('/account-suspended');
+      return;
+    }
+
+    if (ticketId) {
+      if (isAdmin) {
+        navigate(`/admin/tickets?ticket=${encodeURIComponent(ticketId)}`);
+      } else {
+        navigate(`/support?ticket=${encodeURIComponent(ticketId)}`);
+      }
+      return;
+    }
+
+    if (isAppeal && isAdmin) {
+      navigate('/admin/tickets?category=suspension_appeal');
     }
   };
 
@@ -130,20 +331,26 @@ const Notifications = () => {
           <div className="flex flex-col gap-4">
             {notifications.map((notif) => {
               const isWarning = notif.title && (notif.title.toLowerCase().includes('warning') || notif.title.toLowerCase().includes('moderation'));
+              const ticketId = extractTicketIdentifier(notif);
+              const isAppeal = isAppealSubmission(notif);
+              const isActionable = Boolean(ticketId || isAppeal);
+
               return (
                 <div 
                   key={notif._id}
-                  onClick={() => !notif.read && handleMarkAsRead(notif._id)}
+                  onClick={() => handleNotificationClick(notif)}
                   className={`p-6 rounded-xl border transition-all cursor-pointer relative ${
                     notif.read 
-                      ? 'bg-bg-card border-border-subtle opacity-70' 
+                      ? 'bg-bg-card border-border-subtle opacity-70 hover:opacity-100' 
                       : isWarning
                         ? 'bg-bg-card border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
-                        : 'bg-bg-card border-zync-cyan shadow-[0_0_15px_rgba(0,255,255,0.1)]'
+                        : isActionable
+                          ? 'bg-bg-card border-zync-cyan shadow-[0_0_15px_rgba(0,255,255,0.15)] hover:border-zync-cyan/80'
+                          : 'bg-bg-card border-zync-cyan shadow-[0_0_15px_rgba(0,255,255,0.1)]'
                   }`}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       {!notif.read && (
                         <span 
                           data-testid="unread-blue-dot"
@@ -165,8 +372,26 @@ const Notifications = () => {
                           Official Warning
                         </span>
                       )}
+                      {ticketId && (
+                        <span 
+                          data-testid="ticket-badge"
+                          className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-zync-cyan/10 text-zync-cyan border border-zync-cyan/30 flex items-center gap-1"
+                        >
+                          <span>🎫 {ticketId}</span>
+                          <span className="text-[9px] opacity-75">↗</span>
+                        </span>
+                      )}
+                      {isAppeal && !ticketId && (
+                        <span 
+                          data-testid="appeal-badge"
+                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1"
+                        >
+                          <span>Appeal Desk</span>
+                          <span className="text-[9px] opacity-75">↗</span>
+                        </span>
+                      )}
                     </div>
-                    <span className="text-xs text-text-secondary">
+                    <span className="text-xs text-text-secondary whitespace-nowrap ml-2">
                       {new Date(notif.createdAt).toLocaleString()}
                     </span>
                   </div>

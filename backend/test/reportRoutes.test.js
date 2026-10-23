@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { connectTestDB, closeTestDB, clearTestDB } from './setup.js';
 
 vi.mock('../src/middleware/authMiddleware.js', () => ({
@@ -62,6 +63,8 @@ describe('Report Evidence Snapshot', () => {
         conversationId: convAB._id,
         sender: i % 2 === 0 ? userA._id : userB._id,
         text: `Message ${i}`,
+        seq: i + 1,
+        clientMessageId: crypto.randomUUID(),
         createdAt: new Date(now + i * 1000)
       });
     }
@@ -93,8 +96,8 @@ describe('Report Evidence Snapshot', () => {
 
   it('stores all available messages if conversation has fewer than 10 messages', async () => {
     const now = Date.now();
-    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'M1', createdAt: new Date(now) });
-    await Message.create({ conversationId: convAB._id, sender: userB._id, text: 'M2', createdAt: new Date(now + 1000) });
+    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'M1', seq: 1, clientMessageId: crypto.randomUUID(), createdAt: new Date(now) });
+    await Message.create({ conversationId: convAB._id, sender: userB._id, text: 'M2', seq: 2, clientMessageId: crypto.randomUUID(), createdAt: new Date(now + 1000) });
 
     const res = await request(app).post('/api/reports')
       .set('Authorization', 'Bearer uidA')
@@ -128,8 +131,8 @@ describe('Report Evidence Snapshot', () => {
   });
 
   it('evidence belongs only to the reported conversation', async () => {
-    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'AB Message' });
-    await Message.create({ conversationId: convBC._id, sender: userB._id, text: 'BC Message' });
+    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'AB Message', seq: 1, clientMessageId: crypto.randomUUID() });
+    await Message.create({ conversationId: convBC._id, sender: userB._id, text: 'BC Message', seq: 1, clientMessageId: crypto.randomUUID() });
 
     const res = await request(app).post('/api/reports')
       .set('Authorization', 'Bearer uidA')
@@ -159,7 +162,7 @@ describe('Report Evidence Snapshot', () => {
   });
 
   it('ensures immutability: new messages added AFTER report creation do not appear in evidenceMessages', async () => {
-    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'Before report' });
+    await Message.create({ conversationId: convAB._id, sender: userA._id, text: 'Before report', seq: 1, clientMessageId: crypto.randomUUID() });
 
     const res = await request(app).post('/api/reports')
       .set('Authorization', 'Bearer uidA')
@@ -172,7 +175,7 @@ describe('Report Evidence Snapshot', () => {
     expect(res.status).toBe(201);
 
     // Add a message AFTER report creation
-    await Message.create({ conversationId: convAB._id, sender: userB._id, text: 'After report' });
+    await Message.create({ conversationId: convAB._id, sender: userB._id, text: 'After report', seq: 2, clientMessageId: crypto.randomUUID() });
 
     const report = await Report.findOne({ reporter: userA._id });
     expect(report.evidenceMessages).toHaveLength(1);

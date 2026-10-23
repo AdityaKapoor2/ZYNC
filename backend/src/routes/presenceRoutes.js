@@ -1,5 +1,5 @@
 import express from 'express';
-import { setOnline, setOffline, getPresence } from '../controllers/presenceController.js';
+import { setOnline, setOffline, getPresence, setVisibilityPreference } from '../controllers/presenceController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { enforceActiveUser } from '../middleware/activeMiddleware.js';
 
@@ -10,5 +10,7 @@ router.use(verifyToken);
 router.post('/online', enforceActiveUser, setOnline);
 router.post('/offline', enforceActiveUser, setOffline);
 router.get('/me', getPresence);
+router.post('/visibility', enforceActiveUser, setVisibilityPreference);
+router.put('/visibility', enforceActiveUser, setVisibilityPreference);
 
 export default router;

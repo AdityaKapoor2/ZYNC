@@ -21,12 +21,14 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AccountSuspended from './pages/AccountSuspended';
 import Notifications from './pages/Notifications';
 import Support from './pages/Support';
+import { SocketProvider } from './context/SocketContext';
 
 function App() {
   return (
     <AuthProvider>
       <Router>
-        <Routes>
+        <SocketProvider>
+          <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/account-suspended" element={<AccountSuspended />} />
@@ -54,6 +56,7 @@ function App() {
             <Route path="notifications" element={<AdminNotifications />} />
           </Route>
         </Routes>
+        </SocketProvider>
       </Router>
     </AuthProvider>
   );

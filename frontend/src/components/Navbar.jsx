@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getProfile, getPresenceStatus, setOnlineStatus, setOfflineStatus, getConnectionRequests } from '../services/api';
+import { useSocket } from '../context/SocketContext';
+import { getProfile, getPresenceStatus, setVisibilityPreference, getConnectionRequests, getInbox, getUnreadNotificationCount } from '../services/api';
+import { handleNotificationStorageEvent } from '../services/notificationSync';
 import zyncLogo from '../assets/zync-logo.png';
 
 const Navbar = () => {
   const { currentUser, logout, isAdmin } = useAuth();
+  const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -14,15 +17,133 @@ const Navbar = () => {
   const [displayName, setDisplayName] = useState(currentUser?.email || 'User');
   const dropdownRef = useRef(null);
 
-  // Presence State
-  const [isOnline, setIsOnline] = useState(false);
-  const [onlineUntil, setOnlineUntil] = useState(null);
-  const [timeRemaining, setTimeRemaining] = useState('');
+  // Presence State: preference and connection state are strictly separated
+  const [visibilityPreference, setVisibilityPreferenceState] = useState('online');
   const [presenceLoading, setPresenceLoading] = useState(false);
+  const [presenceError, setPresenceError] = useState('');
 
   // Notifications State
-  const [hasNotifications, setHasNotifications] = useState(false); // for connection requests
+  const [hasNotifications, setHasNotifications] = useState(false); // for connection requests and unread inbox
   const [unreadCount, setUnreadCount] = useState(0); // for in-app notifications
+  const seenNotificationIdsRef = useRef(new Set());
+
+  // Clear seen notification cache when user context changes
+  useEffect(() => {
+    seenNotificationIdsRef.current.clear();
+  }, [currentUser]);
+
+  const checkInboxNotifications = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const token = await currentUser.getIdToken();
+      const [requests, inboxItems] = await Promise.all([
+        getConnectionRequests(token).catch(() => []),
+        getInbox(token).catch(() => [])
+      ]);
+      const hasPendingReqs = Array.isArray(requests) && requests.length > 0;
+      const hasUnreadInbox = Array.isArray(inboxItems) && inboxItems.some(
+        c => Boolean(c.isUnread)
+      );
+      setHasNotifications(hasPendingReqs || hasUnreadInbox);
+    } catch (e) {
+      console.error('Failed to fetch pending requests / inbox items', e);
+    }
+  }, [currentUser]);
+
+  // Reconcile authoritative unread notifications count from backend
+  const refreshUnreadNotificationCount = useCallback(async () => {
+    if (!currentUser) {
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      const token = await currentUser.getIdToken();
+      const unreadRes = await getUnreadNotificationCount(token);
+      if (unreadRes && typeof unreadRes.count === 'number') {
+        setUnreadCount(Math.max(0, unreadRes.count));
+      }
+    } catch (e) {
+      console.error('Failed to fetch unread notification count', e);
+    }
+  }, [currentUser]);
+
+  // Reconcile inbox notifications on path change or socket reconnection
+  useEffect(() => {
+    checkInboxNotifications();
+  }, [checkInboxNotifications, location.pathname, isConnected]);
+
+  // Realtime notification update when incoming message activity arrives or conversations are marked read
+  useEffect(() => {
+    if (!socket) return;
+    const handleInboxActivity = () => {
+      checkInboxNotifications();
+    };
+    const handleInboxRead = () => {
+      checkInboxNotifications();
+    };
+
+    socket.on('inbox:activity', handleInboxActivity);
+    socket.on('inbox:read', handleInboxRead);
+
+    return () => {
+      socket.off('inbox:activity', handleInboxActivity);
+      socket.off('inbox:read', handleInboxRead);
+    };
+  }, [socket, checkInboxNotifications]);
+
+  // Realtime notification:new event listener
+  useEffect(() => {
+    if (!socket || !currentUser) return;
+
+    const handleNewNotification = (notification) => {
+      if (!notification || !notification._id) return;
+
+      // Prevent duplicate-event overcounting if delivered repeatedly
+      if (seenNotificationIdsRef.current.has(notification._id)) {
+        return;
+      }
+      seenNotificationIdsRef.current.add(notification._id);
+      if (seenNotificationIdsRef.current.size > 200) {
+        const first = seenNotificationIdsRef.current.values().next().value;
+        seenNotificationIdsRef.current.delete(first);
+      }
+
+      // Optimistically increment badge for immediate UI feedback
+      setUnreadCount((prev) => prev + 1);
+
+      // Reconcile with authoritative count from server
+      refreshUnreadNotificationCount();
+    };
+
+    const handleNotificationRead = (data) => {
+      if (!data?._id) return;
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      refreshUnreadNotificationCount();
+    };
+
+    const handleNotificationReadAll = () => {
+      setUnreadCount(0);
+      refreshUnreadNotificationCount();
+    };
+
+    socket.on('notification:new', handleNewNotification);
+    socket.on('notification:read', handleNotificationRead);
+    socket.on('notification:read_all', handleNotificationReadAll);
+
+    return () => {
+      socket.off('notification:new', handleNewNotification);
+      socket.off('notification:read', handleNotificationRead);
+      socket.off('notification:read_all', handleNotificationReadAll);
+    };
+  }, [socket, currentUser, refreshUnreadNotificationCount]);
+
+  // Listen for custom inbox read events (e.g. Chat.jsx marking conversation read)
+  useEffect(() => {
+    window.addEventListener('inboxReadStateChanged', checkInboxNotifications);
+    return () => {
+      window.removeEventListener('inboxReadStateChanged', checkInboxNotifications);
+    };
+  }, [checkInboxNotifications]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -35,7 +156,7 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch user profile for display name if available
+  // Fetch user profile for display name and initial status
   useEffect(() => {
     let isMounted = true;
     const fetchName = async () => {
@@ -47,48 +168,27 @@ const Navbar = () => {
             setDisplayName(profile.displayName);
           }
           
-          // Fetch presence status
+          // Fetch authoritative presence preference
           const presence = await getPresenceStatus(token);
-          if (isMounted) {
-            setIsOnline(presence.isOnline);
-            setOnlineUntil(presence.onlineUntil ? new Date(presence.onlineUntil) : null);
+          if (isMounted && presence?.visibilityPreference) {
+            setVisibilityPreferenceState(presence.visibilityPreference);
           }
 
           // Fetch pending requests & inbox items
-          try {
-            const requests = await getConnectionRequests(token);
-            if (isMounted && Array.isArray(requests) && requests.length > 0) {
-              setHasNotifications(true);
-            } else {
-              const { getConversations } = await import('../services/api');
-              const convs = await getConversations(token);
-              if (isMounted && Array.isArray(convs) && convs.length > 0) {
-                const hasAdminNotice = convs.some(c => c.isModeration || c.lastMessage?.senderRole === 'admin');
-                if (hasAdminNotice) {
-                  setHasNotifications(true);
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Failed to fetch pending requests / inbox items', e);
-          }
+          await checkInboxNotifications();
 
           // Fetch unread notifications count
-          try {
-            const { getUnreadNotificationCount } = await import('../services/api');
-            const unreadRes = await getUnreadNotificationCount(token);
-            if (isMounted && unreadRes && unreadRes.count > 0) {
-              setUnreadCount(unreadRes.count);
-            }
-          } catch (e) {
-            console.error('Failed to fetch unread notification count', e);
+          if (isMounted) {
+            await refreshUnreadNotificationCount();
           }
-        } catch (err) {
+        } catch {
           // Fallback to email or google display name
           if (isMounted && currentUser.displayName) {
             setDisplayName(currentUser.displayName);
           }
         }
+      } else {
+        setUnreadCount(0);
       }
     };
     fetchName();
@@ -96,10 +196,12 @@ const Navbar = () => {
     const handleNotificationRead = () => {
       // Decrement unread count locally when an event fires
       setUnreadCount(prev => Math.max(0, prev - 1));
+      refreshUnreadNotificationCount();
     };
 
     const handleAllRead = () => {
       setUnreadCount(0);
+      refreshUnreadNotificationCount();
     };
 
     window.addEventListener('notificationRead', handleNotificationRead);
@@ -110,52 +212,97 @@ const Navbar = () => {
       window.removeEventListener('notificationRead', handleNotificationRead);
       window.removeEventListener('notificationsAllRead', handleAllRead);
     };
+  }, [currentUser, checkInboxNotifications, refreshUnreadNotificationCount]);
+
+  // Refresh authoritative presence status from server
+  const refreshPresence = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const token = await currentUser.getIdToken();
+      const presence = await getPresenceStatus(token);
+      if (presence?.visibilityPreference) {
+        setVisibilityPreferenceState(presence.visibilityPreference);
+      }
+    } catch (e) {
+      console.error('Failed to refresh authoritative presence status', e);
+    }
   }, [currentUser]);
 
-  // Countdown Timer
+  // Reconcile presence preference and unread notification count on reconnect
+  const wasConnectedRef = useRef(isConnected);
   useEffect(() => {
-    if (!isOnline || !onlineUntil) {
-      setTimeRemaining('');
-      return;
+    if (isConnected && !wasConnectedRef.current) {
+      refreshPresence();
+      refreshUnreadNotificationCount();
     }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected, refreshPresence, refreshUnreadNotificationCount]);
 
-    const intervalId = setInterval(() => {
-      const now = new Date();
-      const diff = onlineUntil - now;
-      
-      if (diff <= 0) {
-        setIsOnline(false);
-        setOnlineUntil(null);
-        setTimeRemaining('');
-        clearInterval(intervalId);
-      } else {
-        const minutes = Math.floor(diff / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        setTimeRemaining(`${minutes}:${seconds < 10 ? '0' : ''}${seconds}`);
+  // Multi-tab synchronization: sync on window focus and local storage changes
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'zync_visibility_preference' && e.newValue) {
+        if (['online', 'invisible'].includes(e.newValue)) {
+          setVisibilityPreferenceState(e.newValue);
+        }
       }
-    }, 1000);
+      handleNotificationStorageEvent(e, currentUser?.uid);
+    };
 
-    return () => clearInterval(intervalId);
-  }, [isOnline, onlineUntil]);
+    const handleFocus = () => {
+      refreshPresence();
+      refreshUnreadNotificationCount();
+    };
 
-  const handleTogglePresence = async () => {
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [currentUser, refreshPresence, refreshUnreadNotificationCount]);
+
+  // Self-directed presence:update listener
+  // The saved preference must NEVER be inferred from presence:update events alone.
+  // Instead, refresh authoritative state from the server on self update.
+  useEffect(() => {
+    if (!socket || !currentUser) return;
+    const handlePresenceUpdate = (data) => {
+      if (!data?.userId) return;
+      if (currentUser.uid && data.userId.toString() === currentUser.uid.toString()) {
+        refreshPresence();
+      }
+    };
+    socket.on('presence:update', handlePresenceUpdate);
+    return () => {
+      socket.off('presence:update', handlePresenceUpdate);
+    };
+  }, [socket, currentUser, refreshPresence]);
+
+  // Toggle user visibility preference between 'online' and 'invisible'
+  const handleToggleVisibility = async (targetPreference) => {
     if (presenceLoading || !currentUser) return;
+    const nextPref = targetPreference || (visibilityPreference === 'online' ? 'invisible' : 'online');
+    if (nextPref === visibilityPreference) return;
+
     try {
       setPresenceLoading(true);
+      setPresenceError('');
       const token = await currentUser.getIdToken();
-      if (isOnline) {
-        await setOfflineStatus(token);
-        setIsOnline(false);
-        setOnlineUntil(null);
-        setTimeRemaining('');
-      } else {
-        const res = await setOnlineStatus(token);
-        setIsOnline(res.isOnline);
-        setOnlineUntil(new Date(res.onlineUntil));
+      const res = await setVisibilityPreference(token, nextPref);
+      // Update local preference only after server confirms success
+      const confirmedPref = res?.visibilityPreference || nextPref;
+      setVisibilityPreferenceState(confirmedPref);
+      try {
+        localStorage.setItem('zync_visibility_preference', confirmedPref);
+      } catch (e) {
+        // Ignore localStorage quota or private browsing errors
       }
     } catch (err) {
-      console.error(err);
-      alert('Failed to update presence status.');
+      console.error('Failed to update visibility preference:', err);
+      setPresenceError(err.message || 'Failed to update visibility preference');
+      // Retain previous preference on error; allow retry
     } finally {
       setPresenceLoading(false);
     }
@@ -211,30 +358,43 @@ const Navbar = () => {
         <div className="flex items-center gap-3 md:gap-6">
           {currentUser && (
             <div className="hidden md:flex items-center gap-3 pr-4 border-r border-border-subtle">
-              <span className={`text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 ${isOnline ? 'text-white' : 'text-text-secondary'}`}>
-                {isOnline ? (
+              <span 
+                data-testid="desktop-presence-status"
+                className={`text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 ${
+                  visibilityPreference === 'invisible'
+                    ? 'text-purple-300'
+                    : isConnected
+                      ? 'text-white'
+                      : 'text-text-secondary'
+                }`}
+              >
+                {visibilityPreference === 'invisible' ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.5)]"></span>
+                ) : isConnected ? (
                   <span className="w-1.5 h-1.5 rounded-full bg-zync-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.5)]"></span>
                 ) : (
                   <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
                 )}
-                {isOnline ? 'Online' : 'Offline'}
+                {visibilityPreference === 'invisible' 
+                  ? 'Invisible' 
+                  : isConnected 
+                    ? 'Online' 
+                    : 'Offline'}
               </span>
               
               <button 
-                onClick={handleTogglePresence}
+                onClick={() => handleToggleVisibility()}
                 disabled={presenceLoading}
+                aria-label={`Toggle visibility from ${visibilityPreference}`}
+                title={`Preference: ${visibilityPreference}. Click to switch to ${visibilityPreference === 'online' ? 'invisible' : 'online'}.`}
                 className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${
-                  isOnline ? 'bg-zync-cyan border border-zync-cyan' : 'bg-bg-secondary border border-border-subtle'
-                } disabled:opacity-50`}
+                  visibilityPreference === 'online' ? 'bg-zync-cyan border border-zync-cyan' : 'bg-bg-secondary border border-border-subtle'
+                } disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed`}
               >
                 <span className={`absolute top-[3px] left-[3px] w-3 h-3 rounded-full transition-transform ${
-                  isOnline ? 'bg-bg-primary translate-x-5' : 'bg-text-secondary translate-x-0'
+                  visibilityPreference === 'online' ? 'bg-bg-primary translate-x-5' : 'bg-text-secondary translate-x-0'
                 }`}></span>
               </button>
-
-              {isOnline && timeRemaining && (
-                <span className="text-xs font-bold text-zync-cyan tracking-widest ml-1">{timeRemaining}</span>
-              )}
             </div>
           )}
 
@@ -252,6 +412,37 @@ const Navbar = () => {
                 <p className="text-sm text-white font-bold truncate">{displayName}</p>
                 <p className="text-xs text-text-secondary truncate">{currentUser?.email}</p>
               </div>
+
+              {/* Mobile / Dropdown Visibility Control */}
+              <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+                <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Status</span>
+                <button
+                  onClick={() => handleToggleVisibility()}
+                  disabled={presenceLoading}
+                  aria-label={`Toggle visibility from ${visibilityPreference}`}
+                  className={`text-xs font-bold px-2.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
+                    visibilityPreference === 'invisible'
+                      ? 'border-purple-500/50 text-purple-300 bg-purple-500/10 hover:bg-purple-500/20'
+                      : isConnected
+                        ? 'border-zync-cyan/50 text-zync-cyan bg-zync-cyan/10 hover:bg-zync-cyan/20'
+                        : 'border-border-subtle text-text-secondary bg-bg-secondary hover:text-white'
+                  } disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    visibilityPreference === 'invisible'
+                      ? 'bg-purple-400'
+                      : isConnected
+                        ? 'bg-zync-cyan'
+                        : 'bg-gray-500'
+                  }`}></span>
+                  {visibilityPreference === 'invisible' ? 'Invisible' : isConnected ? 'Online' : 'Offline'}
+                </button>
+              </div>
+              {presenceError && (
+                <div className="px-4 py-1 text-[11px] text-red-400 border-b border-border-subtle">
+                  {presenceError}
+                </div>
+              )}
               <Link 
                 to="/dashboard" 
                 onClick={() => setDropdownOpen(false)}
@@ -325,4 +516,23 @@ const Navbar = () => {
   );
 };
 
+export function computeEffectivePresence({ visibilityPreference, isConnected }) {
+  const pref = visibilityPreference || 'online';
+  if (pref === 'invisible') {
+    return {
+      label: 'Invisible',
+      preference: 'invisible',
+      isConnected: Boolean(isConnected),
+      badgeColor: 'purple'
+    };
+  }
+  return {
+    label: isConnected ? 'Online' : 'Offline',
+    preference: 'online',
+    isConnected: Boolean(isConnected),
+    badgeColor: isConnected ? 'cyan' : 'gray'
+  };
+}
+
 export default Navbar;
+

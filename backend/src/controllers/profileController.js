@@ -33,7 +33,14 @@ export const getPublicProfile = async (req, res) => {
       return res.status(404).json({ message: 'Profile not found' });
     }
 
-    return res.status(200).json(userProfile);
+    const profileObj = userProfile.toObject ? userProfile.toObject() : { ...userProfile };
+    if (profileObj.visibilityPreference === 'invisible') {
+      profileObj.isOnline = false;
+      profileObj.onlineUntil = null;
+    }
+    delete profileObj.visibilityPreference;
+
+    return res.status(200).json(profileObj);
   } catch (error) {
     console.error('Error fetching public profile:', error);
     return res.status(500).json({ message: 'Internal server error' });

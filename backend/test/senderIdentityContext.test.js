@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
 import UserProfile from '../src/models/UserProfile.js';
@@ -110,7 +111,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const res = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer admin_dual_role_uid')
-      .send({ text: 'GG, let us queue next match!' });
+      .send({ text: 'GG, let us queue next match!', clientMessageId: crypto.randomUUID() });
 
     expect(res.status).toBe(201);
     expect(res.body.text).toBe('GG, let us queue next match!');
@@ -146,7 +147,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const res = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer admin_dual_role_uid')
-      .send({ text: 'Unauthorized admin notice in normal chat', senderContext: 'admin' });
+      .send({ text: 'Unauthorized admin notice in normal chat', senderContext: 'admin', clientMessageId: crypto.randomUUID() });
 
     expect(res.status).toBe(403);
     expect(res.body.message).toContain('Admin sender context is only permitted in authorized moderation conversations');
@@ -164,7 +165,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const res = await request(app)
       .post(`/api/chat/conversations/${modConv._id}/messages`)
       .set('Authorization', 'Bearer admin_dual_role_uid')
-      .send({ text: 'Official moderation notice regarding report', senderContext: 'admin' });
+      .send({ text: 'Official moderation notice regarding report', senderContext: 'admin', clientMessageId: crypto.randomUUID() });
 
     expect(res.status).toBe(201);
     expect(res.body.senderRole).toBe('admin');
@@ -182,7 +183,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const res = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer normal_user_uid')
-      .send({ text: 'I claim to be admin!', senderContext: 'admin' });
+      .send({ text: 'I claim to be admin!', senderContext: 'admin', clientMessageId: crypto.randomUUID() });
 
     expect(res.status).toBe(403);
     expect(res.body.message).toContain('Super Admin role required');
@@ -200,7 +201,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const modRes = await request(app)
       .post(`/api/chat/conversations/${modConv._id}/messages`)
       .set('Authorization', 'Bearer normal_user_uid')
-      .send({ text: 'Normal user spoofing admin in mod chat', senderContext: 'admin' });
+      .send({ text: 'Normal user spoofing admin in mod chat', senderContext: 'admin', clientMessageId: crypto.randomUUID() });
 
     expect(modRes.status).toBe(403);
     expect(modRes.body.message).toContain('Super Admin role required');
@@ -227,7 +228,8 @@ describe('Separate User Identity from Administrative Display Identity', () => {
         text: 'Normal message',
         sender: adminUser._id,
         senderRole: 'admin',
-        senderDisplayName: 'ZYNC Super Admin'
+        senderDisplayName: 'ZYNC Super Admin',
+        clientMessageId: crypto.randomUUID()
       });
 
     expect(res.status).toBe(201);
@@ -247,7 +249,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const res = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer normal_user_uid')
-      .send({ text: 'Message from regular user' });
+      .send({ text: 'Message from regular user', clientMessageId: crypto.randomUUID() });
 
     expect(res.status).toBe(201);
     const msgId = res.body._id;
@@ -266,7 +268,8 @@ describe('Separate User Identity from Administrative Display Identity', () => {
       .set('Authorization', 'Bearer normal_user_uid');
 
     expect(getRes.status).toBe(200);
-    const fetched = getRes.body.find(m => m._id.toString() === msgId.toString());
+    const msgs = getRes.body.messages || getRes.body;
+    const fetched = msgs.find(m => m._id.toString() === msgId.toString());
     expect(fetched.senderRole).toBe('user');
     expect(fetched.senderDisplayName).toBe('NormalGamer1');
   });
@@ -315,7 +318,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const chatRes = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer normal_user_uid')
-      .send({ text: 'Hello squad!' });
+      .send({ text: 'Hello squad!', clientMessageId: crypto.randomUUID() });
     expect(chatRes.status).toBe(201);
     expect(chatRes.body.senderRole).toBe('user');
 
@@ -340,7 +343,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const nonPartRes = await request(app)
       .post(`/api/chat/conversations/${normalConv._id}/messages`)
       .set('Authorization', 'Bearer other_user_uid')
-      .send({ text: 'Uninvited message' });
+      .send({ text: 'Uninvited message', clientMessageId: crypto.randomUUID() });
     expect(nonPartRes.status).toBe(403);
     expect(nonPartRes.body.message).toContain('Not authorized to send messages');
     const nonPartMsg = await Message.findOne({ text: 'Uninvited message' });
@@ -354,7 +357,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const unconnectedRes = await request(app)
       .post(`/api/chat/conversations/${unconnectedConv._id}/messages`)
       .set('Authorization', 'Bearer normal_user_uid')
-      .send({ text: 'Hey stranger' });
+      .send({ text: 'Hey stranger', clientMessageId: crypto.randomUUID() });
     expect(unconnectedRes.status).toBe(403);
     expect(unconnectedRes.body.message).toContain('Cannot chat with users who are not connected friends');
     const unconnectedMsg = await Message.findOne({ text: 'Hey stranger' });
@@ -370,7 +373,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const suspendedRes = await request(app)
       .post(`/api/chat/conversations/${unconnectedConv._id}/messages`)
       .set('Authorization', 'Bearer other_user_uid')
-      .send({ text: 'Message from suspended user' });
+      .send({ text: 'Message from suspended user', clientMessageId: crypto.randomUUID() });
     expect(suspendedRes.status).toBe(403);
     expect(suspendedRes.body.code).toBe('ACCOUNT_SUSPENDED');
     const suspendedMsg = await Message.findOne({ text: 'Message from suspended user' });
@@ -384,7 +387,7 @@ describe('Separate User Identity from Administrative Display Identity', () => {
     const appealRes = await request(app)
       .post(`/api/chat/conversations/${modConv._id}/messages`)
       .set('Authorization', 'Bearer other_user_uid')
-      .send({ text: 'Appeal explanation for my suspension' });
+      .send({ text: 'Appeal explanation for my suspension', clientMessageId: crypto.randomUUID() });
     expect(appealRes.status).toBe(201);
     expect(appealRes.body.senderRole).toBe('user');
     const appealMsg = await Message.findOne({ text: 'Appeal explanation for my suspension' });

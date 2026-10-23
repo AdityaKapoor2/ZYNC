@@ -1,17 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { getConnections, removeConnection } from '../services/api';
 import Navbar from '../components/Navbar';
 
 const Connections = () => {
   const { currentUser } = useAuth();
+  const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
   
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [connectionToRemove, setConnectionToRemove] = useState(null);
+
+  const wasConnectedRef = useRef(isConnected);
 
   const handleRemoveClick = (conn) => {
     setConnectionToRemove(conn);
@@ -56,6 +60,54 @@ const Connections = () => {
     
     fetchData();
   }, [currentUser]);
+
+  // Real-time presence updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handlePresenceUpdate = (data) => {
+      if (!data || !data.userId) return;
+      const targetUserId = data.userId.toString();
+      setConnections(prevConnections =>
+        prevConnections.map(conn => {
+          if (conn?.user?._id?.toString() === targetUserId) {
+            return {
+              ...conn,
+              user: {
+                ...conn.user,
+                isOnline: Boolean(data.isOnline),
+                onlineUntil: data.isOnline
+                  ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+                  : null,
+                lastSeen: data.lastSeen || conn.user.lastSeen
+              }
+            };
+          }
+          return conn;
+        })
+      );
+    };
+
+    socket.on('presence:update', handlePresenceUpdate);
+
+    return () => {
+      socket.off('presence:update', handlePresenceUpdate);
+    };
+  }, [socket]);
+
+  // Reconnect reconciliation: re-fetch authoritative connections when socket reconnects
+  useEffect(() => {
+    if (isConnected && !wasConnectedRef.current && currentUser) {
+      currentUser.getIdToken().then(token => {
+        getConnections(token).then(connRes => {
+          setConnections(connRes);
+        }).catch(err => {
+          console.error("Failed to reconcile connections on reconnect:", err);
+        });
+      });
+    }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected, currentUser]);
 
 
   if (loading) {

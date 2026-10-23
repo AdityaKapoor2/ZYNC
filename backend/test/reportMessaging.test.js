@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
 import UserProfile from '../src/models/UserProfile.js';
@@ -179,6 +180,96 @@ describe('Report Messaging (Admin)', () => {
       .send({ recipientType: 'reporter', message: '   ' });
       
     expect(res.status).toBe(400);
+  });
+
+  it('N. Idempotent retry with same clientMessageId returns 200 without creating duplicate message or incrementing lastSeq', async () => {
+    const key = crypto.randomUUID();
+    const res1 = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reporter', message: 'First notice', clientMessageId: key });
+
+    expect(res1.status).toBe(201);
+    const convId = res1.body.conversationId;
+
+    const convBefore = await Conversation.findById(convId);
+    expect(convBefore.lastSeq).toBe(1);
+
+    // Exact retry
+    const res2 = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reporter', message: 'First notice', clientMessageId: key });
+
+    expect(res2.status).toBe(200);
+
+    const convAfter = await Conversation.findById(convId);
+    expect(convAfter.lastSeq).toBe(1);
+
+    const msgs = await Message.find({ conversationId: convId });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].seq).toBe(1);
+    expect(msgs[0].clientMessageId).toBe(key);
+  });
+
+  it('O. Concurrent duplicate sends with same clientMessageId create exactly one message and increment lastSeq exactly once', async () => {
+    // Initialize conversation
+    const initRes = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reportedUser', message: 'Initial notice' });
+    expect(initRes.status).toBe(201);
+    const convId = initRes.body.conversationId;
+
+    const key = crypto.randomUUID();
+
+    const [res1, res2] = await Promise.all([
+      request(app)
+        .post(`/api/admin/reports/${report1._id}/message`)
+        .set('Authorization', 'Bearer admin_uid')
+        .send({ recipientType: 'reportedUser', message: 'Concurrent notice', clientMessageId: key }),
+      request(app)
+        .post(`/api/admin/reports/${report1._id}/message`)
+        .set('Authorization', 'Bearer admin_uid')
+        .send({ recipientType: 'reportedUser', message: 'Concurrent notice', clientMessageId: key })
+    ]);
+
+    expect([res1.status, res2.status].sort()).toEqual([200, 201]);
+
+    const conv = await Conversation.findById(convId);
+    expect(conv.lastSeq).toBe(2);
+
+    const msgs = await Message.find({ conversationId: convId, clientMessageId: key });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].seq).toBe(2);
+  });
+
+  it('P. Reusing clientMessageId with different text returns 409 Conflict', async () => {
+    const key = crypto.randomUUID();
+    const res1 = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reporter', message: 'Original text', clientMessageId: key });
+
+    expect(res1.status).toBe(201);
+
+    const res2 = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reporter', message: 'Different text', clientMessageId: key });
+
+    expect(res2.status).toBe(409);
+    expect(res2.body.message).toContain('Conflict');
+  });
+
+  it('Q. Malformed clientMessageId returns 400', async () => {
+    const res = await request(app)
+      .post(`/api/admin/reports/${report1._id}/message`)
+      .set('Authorization', 'Bearer admin_uid')
+      .send({ recipientType: 'reporter', message: 'Text', clientMessageId: 'not-a-uuid' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Invalid clientMessageId');
   });
 
 });

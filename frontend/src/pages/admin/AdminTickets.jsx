@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   getStaffSupportTickets, 
+  getSupportTicketDetails,
   updateSupportTicketStaffMeta, 
   addSupportTicketInternalNote, 
   replySupportTicket 
 } from '../../services/api';
+import { getSupportMessageText } from '../Support';
 
 const CATEGORIES = [
   { value: 'all', label: 'All Categories' },
@@ -32,8 +35,62 @@ const PRIORITY_CONFIG = {
   urgent: { label: 'Urgent', color: 'text-red-400 font-bold animate-pulse' }
 };
 
+export function parseStaffTicketsResponse(res) {
+  if (res && Array.isArray(res.tickets)) {
+    const pagination = res.pagination || {};
+    const total = typeof pagination.total === 'number' && Number.isFinite(pagination.total) && pagination.total >= 0
+      ? Math.floor(pagination.total)
+      : res.tickets.length;
+
+    const rawLimit = Number(pagination.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit >= 1
+      ? Math.min(Math.floor(rawLimit), 100)
+      : 20;
+
+    const calculatedPages = Math.ceil(total / limit) || 1;
+    const rawTotalPages = Number(pagination.totalPages);
+    const totalPages = Number.isFinite(rawTotalPages) && rawTotalPages >= 1
+      ? Math.floor(rawTotalPages)
+      : calculatedPages;
+
+    const rawPage = Number(pagination.page);
+    const page = Number.isFinite(rawPage) && rawPage >= 1
+      ? Math.floor(rawPage)
+      : 1;
+
+    return {
+      tickets: res.tickets,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages
+      }
+    };
+  }
+
+  // Gracefully support flat array fallback if returned by test mocks
+  if (Array.isArray(res)) {
+    return {
+      tickets: res,
+      pagination: {
+        page: 1,
+        limit: res.length || 20,
+        total: res.length,
+        totalPages: 1
+      }
+    };
+  }
+
+  throw new Error('Invalid response format received from server.');
+}
+
 const AdminTickets = () => {
   const { currentUser } = useAuth();
+
+  const [searchParams] = useSearchParams();
+  const ticketParam = (searchParams.get('ticket') || searchParams.get('ticketId') || '').trim();
+  const categoryParam = (searchParams.get('category') || '').trim();
 
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -41,11 +98,31 @@ const AdminTickets = () => {
   const [error, setError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState(categoryParam || 'all');
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(ticketParam || '');
+
+  // Keep state in sync if URL search params change
+  useEffect(() => {
+    if (ticketParam) {
+      setSearchQuery(ticketParam);
+      setPage(1);
+    }
+  }, [ticketParam]);
+
+  useEffect(() => {
+    if (categoryParam) {
+      setCategoryFilter(categoryParam);
+      setPage(1);
+    }
+  }, [categoryParam]);
 
   // Actions
   const [replyMessage, setReplyMessage] = useState('');
@@ -60,21 +137,51 @@ const AdminTickets = () => {
       setLoading(true);
       setError('');
       const token = await currentUser.getIdToken();
-      const params = {};
+      const params = { page, limit: 20 };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (categoryFilter !== 'all') params.category = categoryFilter;
       if (priorityFilter !== 'all') params.priority = priorityFilter;
       if (searchQuery.trim()) params.search = searchQuery.trim();
 
       const res = await getStaffSupportTickets(token, params);
-      setTickets(Array.isArray(res) ? res : []);
-      if (selectedTicket) {
-        const refreshed = (res || []).find(t => t._id === selectedTicket._id);
+      const parsed = parseStaffTicketsResponse(res);
+
+      setTickets(parsed.tickets);
+      setPage(parsed.pagination.page);
+      setTotalPages(parsed.pagination.totalPages);
+      setTotalCount(parsed.pagination.total);
+
+      // Deep-link ticket selection priority
+      if (ticketParam) {
+        const matched = parsed.tickets.find(
+          t => t.ticketNumber === ticketParam || t._id === ticketParam
+        );
+        if (matched) {
+          setSelectedTicket(matched);
+        } else if (parsed.tickets.length === 1 && searchQuery.trim() === ticketParam) {
+          setSelectedTicket(parsed.tickets[0]);
+        } else if (/^[0-9a-fA-F]{24}$/.test(ticketParam)) {
+          // Direct Mongo ObjectId lookup fallback
+          try {
+            const singleDetail = await getSupportTicketDetails(token, ticketParam);
+            if (singleDetail && singleDetail._id) {
+              setSelectedTicket(singleDetail);
+              setTickets(prev => [singleDetail, ...prev.filter(t => t._id !== singleDetail._id)]);
+            }
+          } catch (singleErr) {
+            console.debug('Direct ID lookup not found:', singleErr);
+          }
+        }
+      } else if (selectedTicket) {
+        const refreshed = parsed.tickets.find(t => t._id === selectedTicket._id);
         if (refreshed) setSelectedTicket(refreshed);
       }
     } catch (err) {
       console.error('Failed to load tickets for staff:', err);
-      setError('Failed to load tickets. Please check staff permissions.');
+      setError(err.message || 'Failed to load tickets. Please check staff permissions.');
+      setTickets([]);
+      setTotalPages(1);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -82,11 +189,20 @@ const AdminTickets = () => {
 
   useEffect(() => {
     fetchTickets();
-  }, [currentUser, statusFilter, categoryFilter, priorityFilter]);
+  }, [currentUser, page, statusFilter, categoryFilter, priorityFilter]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchTickets();
+    if (page !== 1) {
+      setPage(1);
+    } else {
+      fetchTickets();
+    }
+  };
+
+  const handleFilterChange = (setter) => (e) => {
+    setter(e.target.value);
+    setPage(1);
   };
 
   const handleUpdateMeta = async (updates) => {
@@ -199,7 +315,7 @@ const AdminTickets = () => {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={handleFilterChange(setStatusFilter)}
           className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-zync-cyan"
         >
           <option value="all">All Statuses</option>
@@ -212,7 +328,7 @@ const AdminTickets = () => {
 
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          onChange={handleFilterChange(setCategoryFilter)}
           className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-zync-cyan"
         >
           {CATEGORIES.map(c => (
@@ -222,7 +338,7 @@ const AdminTickets = () => {
 
         <select
           value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
+          onChange={handleFilterChange(setPriorityFilter)}
           className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-zync-cyan"
         >
           <option value="all">All Priorities</option>
@@ -238,7 +354,10 @@ const AdminTickets = () => {
         {/* Ticket List */}
         <div className={`lg:col-span-5 flex flex-col space-y-3 ${selectedTicket ? 'hidden lg:flex' : 'flex'}`}>
           <div className="flex items-center justify-between text-xs text-text-secondary px-1">
-            <span>Showing {tickets.length} tickets</span>
+            <span>Showing {tickets.length} of {typeof totalCount === 'number' ? totalCount : tickets.length} tickets</span>
+            {totalPages > 1 && (
+              <span>Page {page} of {totalPages}</span>
+            )}
           </div>
 
           {loading ? (
@@ -247,7 +366,7 @@ const AdminTickets = () => {
             </div>
           ) : tickets.length === 0 ? (
             <div className="p-8 text-center text-xs text-text-secondary bg-[#0A0F1E] rounded-xl border border-white/10">
-              No tickets matching current filters.
+              {error ? 'Unable to load tickets due to an error.' : 'No tickets matching current filters.'}
             </div>
           ) : (
             <div className="space-y-2 max-h-[720px] overflow-y-auto pr-1">
@@ -296,6 +415,31 @@ const AdminTickets = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 hover:border-white/20 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-white transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-text-secondary font-medium">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 hover:border-white/20 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-white transition-colors"
+              >
+                Next
+              </button>
             </div>
           )}
         </div>
@@ -410,7 +554,7 @@ const AdminTickets = () => {
                               : 'bg-[#0E172A] border-white/10 text-white rounded-tl-sm'
                           }`}
                         >
-                          <p className="whitespace-pre-wrap">{msg.message}</p>
+                          <p className="whitespace-pre-wrap">{getSupportMessageText(msg)}</p>
                         </div>
                       </div>
                     );

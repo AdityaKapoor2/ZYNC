@@ -6,6 +6,12 @@ import Message from '../models/Message.js';
 import ModerationAction from '../models/ModerationAction.js';
 import Notification from '../models/Notification.js';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+import { syncSocketRooms } from '../services/socketService.js';
+import { getIO } from '../config/socket.js';
+import { deliverNotification } from '../services/notificationService.js';
+
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Helper to escape special regex characters for literal matching
 const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -135,6 +141,14 @@ export const updateUserStatus = async (req, res) => {
 
     targetUser.accountStatus = status;
     await targetUser.save();
+
+    setImmediate(async () => {
+      try {
+        await syncSocketRooms(targetUser._id);
+      } catch (syncErr) {
+        console.error(`[SocketSync] Failed to sync rooms for user ${targetUser._id}:`, syncErr);
+      }
+    });
 
     res.status(200).json({ message: `User status updated to ${status}`, user: targetUser });
   } catch (err) {
@@ -282,7 +296,7 @@ export const updateReportStatus = async (req, res) => {
 export const messageReportUser = async (req, res) => {
   try {
     const { id: reportId } = req.params;
-    const { recipientType, message } = req.body;
+    const { recipientType, message, clientMessageId } = req.body;
 
     if (!message || message.trim().length === 0) {
       return res.status(400).json({ message: 'Message cannot be empty' });
@@ -349,19 +363,150 @@ export const messageReportUser = async (req, res) => {
       await conversation.save();
     }
 
-    const newMessage = new Message({
-      conversationId: conversation._id,
-      sender: adminId,
-      senderRole: 'admin',
-      senderDisplayName: 'ZYNC Super Admin',
-      text: message.trim()
-    });
+    // Idempotency: validate client-supplied key or generate server-originated UUID v4
+    let cleanClientMessageId = null;
+    if (clientMessageId !== undefined) {
+      if (typeof clientMessageId !== 'string' || !UUID_V4_REGEX.test(clientMessageId.trim())) {
+        return res.status(400).json({ message: 'Invalid clientMessageId: must be a valid UUID v4' });
+      }
+      cleanClientMessageId = clientMessageId.trim();
 
-    await newMessage.save();
+      const existingMessage = await Message.findOne({
+        conversationId: conversation._id,
+        clientMessageId: cleanClientMessageId
+      });
 
-    conversation.lastMessage = newMessage._id;
-    conversation.lastMessageAt = newMessage.createdAt;
-    await conversation.save();
+      if (existingMessage) {
+        if (existingMessage.sender.toString() !== adminId.toString()) {
+          return res.status(409).json({ message: 'Conflict: clientMessageId has already been used by another sender' });
+        }
+        if (existingMessage.text !== message.trim()) {
+          return res.status(409).json({ message: 'Conflict: clientMessageId cannot be reused with different message content' });
+        }
+        return res.status(200).json({ message: 'Message sent', conversationId: conversation._id });
+      }
+    } else {
+      cleanClientMessageId = crypto.randomUUID();
+    }
+
+    // Transactional sequence allocation and persistence
+    const session = await mongoose.startSession();
+    let committedMessage = null;
+    let duplicateResolved = null;
+
+    try {
+      await session.withTransaction(async () => {
+        const concurrentMsg = await Message.findOne({
+          conversationId: conversation._id,
+          clientMessageId: cleanClientMessageId
+        }).session(session);
+
+        if (concurrentMsg) {
+          duplicateResolved = concurrentMsg;
+          return;
+        }
+
+        const updatedConv = await Conversation.findOneAndUpdate(
+          { _id: conversation._id },
+          { $inc: { lastSeq: 1 } },
+          { session, returnDocument: 'after' }
+        );
+
+        if (!updatedConv) {
+          throw new Error('CONVERSATION_NOT_FOUND');
+        }
+
+        const allocatedSeq = updatedConv.lastSeq;
+
+        const newMessage = new Message({
+          conversationId: conversation._id,
+          sender: adminId,
+          senderRole: 'admin',
+          senderDisplayName: 'ZYNC Super Admin',
+          text: message.trim(),
+          seq: allocatedSeq,
+          clientMessageId: cleanClientMessageId
+        });
+
+        await newMessage.save({ session });
+
+        const existingReadState = Array.isArray(updatedConv.readState) ? updatedConv.readState : [];
+        let adminFound = false;
+        let recipientFound = false;
+
+        const nextReadState = existingReadState.map(entry => {
+          if (entry.user && entry.user.toString() === adminId.toString()) {
+            adminFound = true;
+            return { user: entry.user, lastReadSeq: allocatedSeq };
+          }
+          if (entry.user && entry.user.toString() === targetUserId.toString()) {
+            recipientFound = true;
+            return entry;
+          }
+          return entry;
+        });
+
+        if (!adminFound) {
+          nextReadState.push({ user: adminId, lastReadSeq: allocatedSeq });
+        }
+        if (!recipientFound) {
+          nextReadState.push({ user: targetUserId, lastReadSeq: Math.max(0, allocatedSeq - 1) });
+        }
+
+        await Conversation.updateOne(
+          { _id: conversation._id },
+          {
+            $set: {
+              lastMessage: newMessage._id,
+              lastMessageAt: newMessage.createdAt,
+              readState: nextReadState
+            }
+          },
+          { session }
+        );
+
+        committedMessage = newMessage;
+      });
+    } catch (txErr) {
+      if (txErr.code === 11000 || (txErr.message && txErr.message.includes('E11000'))) {
+        const raceMsg = await Message.findOne({
+          conversationId: conversation._id,
+          clientMessageId: cleanClientMessageId
+        });
+        if (raceMsg) {
+          duplicateResolved = raceMsg;
+        } else {
+          throw txErr;
+        }
+      } else {
+        throw txErr;
+      }
+    } finally {
+      await session.endSession();
+    }
+
+    if (duplicateResolved) {
+      if (duplicateResolved.sender.toString() !== adminId.toString()) {
+        return res.status(409).json({ message: 'Conflict: clientMessageId has already been used by another sender' });
+      }
+      if (duplicateResolved.text !== message.trim()) {
+        return res.status(409).json({ message: 'Conflict: clientMessageId cannot be reused with different message content' });
+      }
+      return res.status(200).json({ message: 'Message sent', conversationId: conversation._id });
+    }
+
+    if (!committedMessage) {
+      return res.status(500).json({ message: 'Failed to commit message' });
+    }
+
+    // Post-commit realtime emission
+    const io = getIO();
+    if (io) {
+      const targetRoom = `official:${targetUserId}`;
+      const adminRoom = `official:${adminId}`;
+      const payload = committedMessage.toObject ? committedMessage.toObject() : committedMessage;
+      io.to(targetRoom).to(adminRoom).emit('chat:message', payload);
+    }
 
     return res.status(201).json({ message: 'Message sent', conversationId: conversation._id });
   } catch (err) {
@@ -516,6 +661,25 @@ export const createModerationAction = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    if (actionType === 'temporary_suspension' || actionType === 'permanent_suspension') {
+      const affectedUserId = affectedUser._id;
+      setImmediate(async () => {
+        try {
+          await syncSocketRooms(affectedUserId);
+        } catch (syncErr) {
+          console.error(`[SocketSync] Failed to sync rooms after moderation action for user ${affectedUserId}:`, syncErr);
+        }
+      });
+    }
+
+    if (warningNotification) {
+      deliverNotification(warningNotification, {
+        recipientId: affectedUser._id,
+        accountStatus: affectedUser.accountStatus
+      });
+    }
+
     res.status(201).json({
       message: 'Moderation action created',
       action,

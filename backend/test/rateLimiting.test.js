@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+import crypto from 'crypto';
 import { connectTestDB, closeTestDB, clearTestDB } from './setup.js';
 
 import UserProfile from '../src/models/UserProfile.js';
@@ -394,14 +395,14 @@ describe('SEC-06: API Rate Limiting Audit & Implementation', () => {
         const res = await request(app)
           .post(`/api/chat/conversations/${conv._id}/messages`)
           .set('Authorization', 'Bearer user_a')
-          .send({ text: `Message ${i}` });
+          .send({ text: `Message ${i}`, clientMessageId: crypto.randomUUID() });
         expect(res.status).toBe(201);
       }
 
       const blockedRes = await request(app)
         .post(`/api/chat/conversations/${conv._id}/messages`)
         .set('Authorization', 'Bearer user_a')
-        .send({ text: 'Spam message' });
+        .send({ text: 'Spam message', clientMessageId: crypto.randomUUID() });
       expect(blockedRes.status).toBe(429);
       expect(blockedRes.body.message).toContain('You are sending messages too quickly');
 
@@ -409,7 +410,7 @@ describe('SEC-06: API Rate Limiting Audit & Implementation', () => {
       const userBRes = await request(app)
         .post(`/api/chat/conversations/${conv._id}/messages`)
         .set('Authorization', 'Bearer user_b')
-        .send({ text: 'Reply from User B' });
+        .send({ text: 'Reply from User B', clientMessageId: crypto.randomUUID() });
       expect(userBRes.status).toBe(201);
     });
 
@@ -494,14 +495,14 @@ describe('SEC-06: API Rate Limiting Audit & Implementation', () => {
         await request(app)
           .post(`/api/chat/conversations/${conv._id}/messages`)
           .set('Authorization', 'Bearer user_a')
-          .send({ text: `Message ${i}`, senderId: 'fake_attacker_id' });
+          .send({ text: `Message ${i}`, senderId: 'fake_attacker_id', clientMessageId: crypto.randomUUID() });
       }
 
       // Attacker attempts to change body senderId / userId
       const bypassAttempt = await request(app)
         .post(`/api/chat/conversations/${conv._id}/messages`)
         .set('Authorization', 'Bearer user_a')
-        .send({ text: 'Bypass message', senderId: 'user_b' });
+        .send({ text: 'Bypass message', senderId: 'user_b', clientMessageId: crypto.randomUUID() });
 
       expect(bypassAttempt.status).toBe(429);
     });

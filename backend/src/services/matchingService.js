@@ -133,6 +133,8 @@ function calculateReputationScore(userRep, candidateRep) {
 }
 
 function isUserOnline(profile) {
+  if (!profile) return false;
+  if (profile.visibilityPreference === 'invisible') return false;
   return profile.isOnline === true && profile.onlineUntil && new Date(profile.onlineUntil) > new Date();
 }
 

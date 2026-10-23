@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { getCorsOptions } from './config/cors.js';
+import { validateTrustProxy } from './config/proxy.js';
 
 import authRoutes from './routes/authRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
@@ -23,13 +24,9 @@ export const createApp = (customCorsOptions, customTrustProxy) => {
 
   // Reverse proxy trust setting:
   // In production behind a single-tier reverse proxy (Render, Fly.io, ALB), defaults to 1.
-  // Configurable via TRUST_PROXY env var (e.g., 'false' for bare servers, '2' for CDN + load balancer).
-  const envTrustProxy = process.env.TRUST_PROXY;
-  const resolvedTrustProxy = customTrustProxy !== undefined
-    ? customTrustProxy
-    : (envTrustProxy !== undefined
-      ? (envTrustProxy === 'true' ? true : envTrustProxy === 'false' ? false : !isNaN(Number(envTrustProxy)) ? Number(envTrustProxy) : envTrustProxy)
-      : 1);
+  // When set to 0, preserves 0 (direct peer, no proxy hops). Rejects invalid configurations explicitly.
+  const rawTrustProxy = customTrustProxy !== undefined ? customTrustProxy : process.env.TRUST_PROXY;
+  const resolvedTrustProxy = validateTrustProxy(rawTrustProxy);
 
   app.set('trust proxy', resolvedTrustProxy);
 

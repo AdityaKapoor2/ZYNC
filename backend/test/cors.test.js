@@ -215,4 +215,111 @@ describe('SEC-05: CORS Configuration and Hardening', () => {
       expect(res.headers['access-control-allow-credentials']).toBeUndefined();
     });
   });
+
+  describe('5. Unusual & Malformed Incoming Origin Headers', () => {
+    const prodApp = createApp(
+      getCorsOptions({
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://zync-app.vercel.app'
+      })
+    );
+
+    const devApp = createApp(
+      getCorsOptions({
+        NODE_ENV: 'development'
+      })
+    );
+
+    describe('Origin: null handling', () => {
+      it('rejects "null" origin in production GET requests', async () => {
+        const res = await request(prodApp)
+          .get('/api/health')
+          .set('Origin', 'null');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      });
+
+      it('rejects "null" origin in production preflight OPTIONS requests', async () => {
+        const res = await request(prodApp)
+          .options('/api/health')
+          .set('Origin', 'null')
+          .set('Access-Control-Request-Method', 'POST');
+
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      });
+
+      it('rejects "null" origin in development GET requests', async () => {
+        const res = await request(devApp)
+          .get('/api/health')
+          .set('Origin', 'null');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      });
+    });
+
+    describe('Malformed and attack origin values', () => {
+      const suspiciousOrigins = [
+        ['empty string', ''],
+        ['literal undefined string', 'undefined'],
+        ['broken protocol', 'http://'],
+        ['arbitrary text', 'not-a-valid-origin'],
+        ['javascript scheme', 'javascript:alert(1)'],
+        ['data URI scheme', 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='],
+        ['dev subdomain spoofing attack', 'http://localhost:5173.attacker.com'],
+        ['dev port spoofing', 'http://localhost:5174'],
+        ['dev scheme mismatch', 'https://localhost:5173'],
+        ['prod subdomain spoofing attack', 'https://zync-app.vercel.app.attacker.com'],
+        ['prod prefix/path attack', 'https://attacker.com/https://zync-app.vercel.app'],
+        ['prod scheme mismatch', 'http://zync-app.vercel.app'],
+        ['prod port mismatch', 'https://zync-app.vercel.app:8443']
+      ];
+
+      for (const [description, originValue] of suspiciousOrigins) {
+        it(`rejects ${description} ("${originValue}") on GET`, async () => {
+          const res = await request(prodApp)
+            .get('/api/health')
+            .set('Origin', originValue);
+
+          expect(res.status).toBe(200);
+          expect(res.headers['access-control-allow-origin']).toBeUndefined();
+        });
+
+        it(`rejects ${description} ("${originValue}") in preflight OPTIONS`, async () => {
+          const res = await request(prodApp)
+            .options('/api/health')
+            .set('Origin', originValue)
+            .set('Access-Control-Request-Method', 'POST');
+
+          expect(res.headers['access-control-allow-origin']).toBeUndefined();
+        });
+      }
+    });
+
+    describe('Verification: valid configured production origins continue to work', () => {
+      it('allows valid production origin on GET with Vary: Origin', async () => {
+        const res = await request(prodApp)
+          .get('/api/health')
+          .set('Origin', 'https://zync-app.vercel.app');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['access-control-allow-origin']).toBe('https://zync-app.vercel.app');
+        expect(res.headers['vary']).toBe('Origin');
+      });
+
+      it('allows valid production origin on preflight OPTIONS', async () => {
+        const res = await request(prodApp)
+          .options('/api/health')
+          .set('Origin', 'https://zync-app.vercel.app')
+          .set('Access-Control-Request-Method', 'POST')
+          .set('Access-Control-Request-Headers', 'Content-Type, Authorization');
+
+        expect(res.status).toBe(204);
+        expect(res.headers['access-control-allow-origin']).toBe('https://zync-app.vercel.app');
+        expect(res.headers['access-control-allow-methods']).toContain('POST');
+        expect(res.headers['access-control-allow-headers']).toContain('Authorization');
+      });
+    });
+  });
 });

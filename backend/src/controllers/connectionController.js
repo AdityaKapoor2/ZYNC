@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import Connection from '../models/Connection.js';
 import UserProfile from '../models/UserProfile.js';
+import Notification from '../models/Notification.js';
+import { deliverNotification } from '../services/notificationService.js';
 
 // Helper to get the current user profile from Firebase UID
 const getCurrentProfile = async (uid) => {
@@ -52,6 +54,27 @@ export const sendRequest = async (req, res) => {
     });
 
     await newConnection.save();
+
+    // Create and deliver notification to recipient post-save
+    try {
+      const requesterName = requester.displayName || 'Someone';
+      const notification = await Notification.create({
+        recipient: recipient._id,
+        title: 'New Connection Request',
+        message: `${requesterName} sent you a connection request.`,
+        read: false
+      });
+
+      // Deliver via Socket.IO only if recipient is active (never route social alerts to official:<id>)
+      if (recipient.accountStatus === 'active') {
+        await deliverNotification(notification, {
+          recipientId: recipient._id,
+          accountStatus: 'active'
+        });
+      }
+    } catch (notifErr) {
+      console.error('[Connection] Notification creation or delivery failed:', notifErr);
+    }
 
     return res.status(201).json({ message: 'Connection request sent', connection: newConnection });
   } catch (error) {
@@ -200,19 +223,28 @@ export const getConnections = async (req, res) => {
       $or: [{ requester: currentUser._id }, { recipient: currentUser._id }],
       status: 'accepted'
     })
-    .populate('requester', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil')
-    .populate('recipient', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil');
+    .populate('requester', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil visibilityPreference')
+    .populate('recipient', 'displayName games playstyle communication competitiveGoals isOnline onlineUntil visibilityPreference');
 
     // Format the response so that we just return the 'other' user
     const formattedConnections = connections.map(conn => {
       const isRequester = conn.requester._id.toString() === currentUser._id.toString();
       const connectedUser = isRequester ? conn.recipient : conn.requester;
+      if (!connectedUser) return null;
+
+      const userObj = connectedUser.toObject ? connectedUser.toObject() : { ...connectedUser };
+      if (userObj.visibilityPreference === 'invisible') {
+        userObj.isOnline = false;
+        userObj.onlineUntil = null;
+      }
+      delete userObj.visibilityPreference;
+
       return {
         connectionId: conn._id,
-        user: connectedUser,
+        user: userObj,
         connectedAt: conn.updatedAt
       };
-    });
+    }).filter(Boolean);
 
     return res.status(200).json(formattedConnections);
   } catch (error) {

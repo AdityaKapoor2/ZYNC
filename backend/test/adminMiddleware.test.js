@@ -107,4 +107,27 @@ describe('Admin Middleware: verifySuperAdmin', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ message: 'Internal server error' });
   });
+
+  it('6. Authenticated suspended super admin - returns 403', async () => {
+    await UserProfile.create({
+      firebaseUid: 'adminSuspended',
+      email: 'adminsus@test.com',
+      displayName: 'Suspended Admin',
+      role: 'super_admin',
+      accountStatus: 'suspended'
+    });
+
+    const req = { user: { uid: 'adminSuspended' } };
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn()
+    };
+    const next = vi.fn();
+
+    await verifySuperAdmin(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'ACCOUNT_SUSPENDED' }));
+  });
 });

@@ -77,6 +77,11 @@ const userProfileSchema = new mongoose.Schema({
   lastSeen: {
     type: Date
   },
+  visibilityPreference: {
+    type: String,
+    enum: ['online', 'invisible'],
+    default: 'online'
+  },
   reputation: {
     score: { type: Number, default: 0 },
     count: { type: Number, default: 0 },

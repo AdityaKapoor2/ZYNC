@@ -18,6 +18,13 @@ export const verifySuperAdmin = async (req, res, next) => {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
+    if (userProfile.accountStatus === 'suspended') {
+      return res.status(403).json({ message: 'Account is suspended', code: 'ACCOUNT_SUSPENDED' });
+    }
+
+    req.user._id = userProfile._id;
+    req.user.profile = userProfile;
+
     next();
   } catch (error) {
     console.error('Super Admin verification error:', error);

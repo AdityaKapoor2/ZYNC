@@ -7,6 +7,7 @@ import {
   getUserSupportTickets, 
   replySupportTicket 
 } from '../services/api';
+import { getSupportMessageText } from './Support';
 
 const STATUS_CONFIG = {
   open: { label: 'Under Review', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
@@ -213,7 +214,7 @@ const AccountSuspended = () => {
                           {new Date(msg.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="whitespace-pre-wrap">{msg.message}</p>
+                      <p className="whitespace-pre-wrap">{getSupportMessageText(msg)}</p>
                     </div>
                   );
                 })}

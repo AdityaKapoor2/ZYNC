@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import { 
@@ -31,8 +32,17 @@ const PRIORITY_CONFIG = {
   urgent: { label: 'Urgent', color: 'text-red-400 font-bold' }
 };
 
+export function getSupportMessageText(msg) {
+  if (!msg) return '';
+  if (typeof msg.text === 'string' && msg.text.length > 0) return msg.text;
+  if (typeof msg.message === 'string' && msg.message.length > 0) return msg.message;
+  return msg.text || msg.message || '';
+}
+
 const Support = () => {
   const { currentUser } = useAuth();
+  const [searchParams] = useSearchParams();
+  const ticketParam = (searchParams.get('ticket') || searchParams.get('ticketId') || '').trim();
   
   const [activeTab, setActiveTab] = useState('tickets'); // 'tickets' | 'create'
   const [tickets, setTickets] = useState([]);
@@ -92,6 +102,34 @@ const Support = () => {
       setDetailLoading(false);
     }
   };
+
+  // Auto-select ticket from URL query parameter (deep-link)
+  useEffect(() => {
+    if (!ticketParam || loading) return;
+
+    if (tickets.length > 0) {
+      const matched = tickets.find(
+        t => t.ticketNumber === ticketParam || t._id === ticketParam
+      );
+      if (matched) {
+        if (selectedTicket?._id !== matched._id) {
+          handleSelectTicket(matched._id);
+          setActiveTab('tickets');
+        }
+        return;
+      }
+    }
+
+    // If not found in loaded tickets array, attempt direct ObjectId fetch if valid hex format
+    if (/^[0-9a-fA-F]{24}$/.test(ticketParam)) {
+      if (selectedTicket?._id !== ticketParam) {
+        handleSelectTicket(ticketParam);
+        setActiveTab('tickets');
+      }
+    } else {
+      setError(`Ticket "${ticketParam}" was not found in your account.`);
+    }
+  }, [ticketParam, tickets, loading]);
 
   const handleCreateTicket = async (e) => {
     e.preventDefault();
@@ -413,7 +451,7 @@ const Support = () => {
                                 : 'bg-[#18233C] border-zync-cyan/30 text-white rounded-tr-sm'
                             }`}
                           >
-                            <p className="whitespace-pre-wrap">{msg.message}</p>
+                            <p className="whitespace-pre-wrap">{getSupportMessageText(msg)}</p>
                           </div>
                         </div>
                       );

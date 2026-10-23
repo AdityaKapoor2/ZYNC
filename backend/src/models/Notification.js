@@ -29,6 +29,15 @@ const notificationSchema = new mongoose.Schema({
 // Index for getting user's notifications quickly, sorted by newest
 notificationSchema.index({ recipient: 1, createdAt: -1 });
 
+// Enforce at most one notification per (broadcastId, recipient) for broadcast-generated notifications
+notificationSchema.index(
+  { broadcastId: 1, recipient: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { broadcastId: { $type: 'objectId' } }
+  }
+);
+
 const Notification = mongoose.model('Notification', notificationSchema);
 
 export default Notification;

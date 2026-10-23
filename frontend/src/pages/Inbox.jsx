@@ -1,17 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { 
   getConnectionRequests, 
   acceptConnection,
   rejectConnection,
-  getConversations,
-  getProfile
+  getInbox,
+  getProfile,
+  markConversationAsRead
 } from '../services/api';
 import Navbar from '../components/Navbar';
 
 const Inbox = () => {
   const { currentUser } = useAuth();
+  const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
   
   const [incomingRequests, setIncomingRequests] = useState([]);
@@ -19,40 +22,164 @@ const Inbox = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const fetchReqIdRef = React.useRef(0);
 
-  useEffect(() => {
-    const fetchInboxData = async () => {
-      if (!currentUser) return;
-      try {
-        setLoading(true);
-        const token = await currentUser.getIdToken();
-        const [incRes, convRes, userProfile] = await Promise.all([
-          getConnectionRequests(token).catch(err => {
-            console.error("Failed to load requests:", err);
-            return [];
-          }),
-          getConversations(token).catch(err => {
-            console.error("Failed to load conversations:", err);
-            return [];
-          }),
-          getProfile(token).catch(err => {
-            console.error("Failed to load profile:", err);
-            return null;
-          })
-        ]);
-        setIncomingRequests(Array.isArray(incRes) ? incRes : []);
-        setConversations(Array.isArray(convRes) ? convRes : []);
-        setProfile(userProfile);
-      } catch (err) {
-        console.error("Failed to load inbox data:", err);
-        setError("Failed to load your inbox items.");
-      } finally {
+  const fetchInboxData = useCallback(async (isQuiet = false) => {
+    if (!currentUser) return;
+    const currentReqId = ++fetchReqIdRef.current;
+    try {
+      if (!isQuiet) setLoading(true);
+      const token = await currentUser.getIdToken();
+      const [incRes, convRes, userProfile] = await Promise.all([
+        getConnectionRequests(token).catch(err => {
+          console.error("Failed to load requests:", err);
+          return [];
+        }),
+        getInbox(token).catch(err => {
+          console.error("Failed to load inbox:", err);
+          return [];
+        }),
+        getProfile(token).catch(err => {
+          console.error("Failed to load profile:", err);
+          return null;
+        })
+      ]);
+      if (currentReqId !== fetchReqIdRef.current) return;
+      setIncomingRequests(Array.isArray(incRes) ? incRes : []);
+      setConversations(Array.isArray(convRes) ? convRes : []);
+      setProfile(userProfile);
+    } catch (err) {
+      if (currentReqId !== fetchReqIdRef.current) return;
+      console.error("Failed to load inbox data:", err);
+      setError("Failed to load your inbox items.");
+    } finally {
+      if (currentReqId === fetchReqIdRef.current && !isQuiet) {
         setLoading(false);
       }
-    };
-    
-    fetchInboxData();
+    }
   }, [currentUser]);
+
+  useEffect(() => {
+    fetchInboxData();
+  }, [fetchInboxData]);
+
+  // Reconcile inbox data when socket reconnects
+  useEffect(() => {
+    if (isConnected && currentUser) {
+      fetchInboxData(true);
+    }
+  }, [isConnected, currentUser, fetchInboxData]);
+
+  // Synchronize on custom inboxReadStateChanged browser event and window focus
+  useEffect(() => {
+    const handleReadStateChanged = () => {
+      fetchInboxData(true);
+    };
+    const handleFocus = () => {
+      fetchInboxData(true);
+    };
+
+    window.addEventListener('inboxReadStateChanged', handleReadStateChanged);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('inboxReadStateChanged', handleReadStateChanged);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchInboxData]);
+
+  // Real-time recipient activity and read synchronization via socket
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleInboxActivity = (activity) => {
+      if (!activity || !activity.conversationId) return;
+      const convIdStr = activity.conversationId.toString();
+      const activitySeq = typeof activity.seq === 'number' ? activity.seq : null;
+
+      setConversations(prev => {
+        const existingIndex = prev.findIndex(c => c._id?.toString() === convIdStr);
+        if (existingIndex >= 0) {
+          const existing = prev[existingIndex];
+          const effectiveSeq = activitySeq || (existing.lastSeq || 0) + 1;
+
+          // Do not resurrect stale unread status if message is already read or duplicate old event
+          const isAlreadyRead = typeof existing.lastReadSeq === 'number' && existing.lastReadSeq >= effectiveSeq;
+          const isDuplicateOld = (existing.lastSeq || 0) >= effectiveSeq && !existing.isUnread;
+          const shouldMarkUnread = !isAlreadyRead && !isDuplicateOld;
+
+          const updated = {
+            ...existing,
+            lastMessage: {
+              ...(existing.lastMessage || {}),
+              sender: activity.sender,
+              senderDisplayName: activity.senderDisplayName || existing.lastMessage?.senderDisplayName,
+              activityText: activity.activityText || 'Just messaged you',
+              seq: effectiveSeq,
+              createdAt: activity.createdAt || new Date().toISOString()
+            },
+            lastMessageAt: activity.createdAt || new Date().toISOString(),
+            lastSeq: effectiveSeq,
+            isUnread: shouldMarkUnread
+          };
+          // Move updated conversation to top with deduplication
+          return [updated, ...prev.filter((_, idx) => idx !== existingIndex)];
+        } else {
+          // If conversation item is newly incoming to inbox, refetch inbox items
+          fetchInboxData(true);
+          return prev;
+        }
+      });
+    };
+
+    const handleInboxRead = (readData) => {
+      if (!readData || !readData.conversationId) return;
+      const convIdStr = readData.conversationId.toString();
+      const readSeq = typeof readData.lastReadSeq === 'number' ? readData.lastReadSeq : 0;
+
+      setConversations(prev => prev.map(c => {
+        if (c._id?.toString() === convIdStr) {
+          const nextReadSeq = Math.max(c.lastReadSeq || 0, readSeq);
+          const isUnread = (c.lastSeq || 0) > nextReadSeq;
+          return {
+            ...c,
+            lastReadSeq: nextReadSeq,
+            isUnread
+          };
+        }
+        return c;
+      }));
+    };
+
+    socket.on('inbox:activity', handleInboxActivity);
+    socket.on('inbox:read', handleInboxRead);
+
+    return () => {
+      socket.off('inbox:activity', handleInboxActivity);
+      socket.off('inbox:read', handleInboxRead);
+    };
+  }, [socket, fetchInboxData]);
+
+  const handleAcknowledgeNotice = async (conversationId, lastSeq) => {
+    if (!currentUser || !conversationId) return;
+    try {
+      const token = await currentUser.getIdToken();
+      await markConversationAsRead(token, conversationId, lastSeq);
+      setConversations(prev => prev.map(c => {
+        if (c._id?.toString() === conversationId.toString()) {
+          return {
+            ...c,
+            isUnread: false,
+            lastReadSeq: Math.max(c.lastReadSeq || 0, lastSeq || 0)
+          };
+        }
+        return c;
+      }));
+      window.dispatchEvent(new Event('inboxReadStateChanged'));
+    } catch (err) {
+      console.error('Failed to acknowledge notice:', err);
+    }
+  };
 
   const handleAccept = async (connectionId) => {
     try {
@@ -85,8 +212,8 @@ const Inbox = () => {
     );
   }
 
-  // Filter conversations that have at least one message for the inbox feed
-  const activeConversations = conversations.filter(c => c.lastMessage || c.isModeration);
+  // Authoritative receive-only conversations returned by getInbox
+  const activeConversations = conversations;
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden font-sans">
@@ -119,7 +246,7 @@ const Inbox = () => {
 
           {activeConversations.length === 0 ? (
             <div className="bg-bg-card border border-border-subtle rounded-md p-6 md:p-8 text-center">
-              <p className="text-white font-bold mb-2 text-base md:text-lg">No messages yet.</p>
+              <p className="text-white font-bold mb-2 text-base md:text-lg">No incoming messages yet.</p>
               <p className="text-text-secondary text-sm">Direct communications from teammates and official moderation notices will appear here.</p>
             </div>
           ) : (
@@ -136,7 +263,11 @@ const Inbox = () => {
                   ? (conv.lastMessage?.senderDisplayName || 'ZYNC Super Admin') 
                   : (otherParticipant?.displayName || 'Player');
                 
-                const preview = conv.lastMessage?.text || 'Conversation opened';
+                // Privacy Guarantee: Never expose private message body in friend activity previews
+                const preview = isAdmin 
+                  ? (conv.lastMessage?.text || 'Official Notice') 
+                  : (conv.lastMessage?.activityText || 'Just messaged you');
+                
                 const targetId = otherParticipant?._id || otherParticipant;
 
                 return (
@@ -146,7 +277,9 @@ const Inbox = () => {
                     className={`bg-bg-card border rounded-md px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between transition-colors gap-4 ${
                       isAdmin 
                         ? 'border-red-500/20 bg-red-500/5 cursor-default' 
-                        : 'border-border-subtle hover:bg-bg-secondary/50 cursor-pointer group'
+                        : conv.isUnread
+                          ? 'border-zync-cyan/60 bg-bg-card shadow-[0_0_15px_rgba(0,255,255,0.08)] hover:bg-bg-secondary/50 cursor-pointer group'
+                          : 'border-border-subtle hover:bg-bg-secondary/50 cursor-pointer group'
                     }`}
                   >
                     <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -159,6 +292,13 @@ const Inbox = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
+                          {conv.isUnread && (
+                            <span 
+                              data-testid="unread-inbox-dot"
+                              className="w-2.5 h-2.5 rounded-full bg-zync-cyan shadow-[0_0_8px_rgba(0,255,255,0.8)] flex-shrink-0 animate-pulse"
+                              title="Unread"
+                            />
+                          )}
                           <h3 className={`text-base font-bold leading-tight truncate ${isAdmin ? 'text-red-400' : 'text-white'}`}>
                             {displayName}
                           </h3>
@@ -180,9 +320,23 @@ const Inbox = () => {
                         </span>
                       )}
                       {isAdmin ? (
-                        <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
-                          Official Notice
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
+                            Official Notice
+                          </span>
+                          {conv.isUnread && (
+                            <button
+                              data-testid="acknowledge-moderation-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAcknowledgeNotice(conv._id, conv.lastSeq);
+                              }}
+                              className="px-2.5 py-1 text-xs font-bold uppercase tracking-wider rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 transition-colors cursor-pointer"
+                            >
+                              Acknowledge
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs font-bold text-zync-cyan uppercase tracking-wider group-hover:translate-x-1 transition-transform">
                           Open Chat &rarr;

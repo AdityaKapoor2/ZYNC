@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
 import UserProfile from '../src/models/UserProfile.js';
@@ -133,12 +134,12 @@ describe('Support / Appeal Routes', () => {
       .set('Authorization', 'Bearer suspended_uid');
 
     expect(getRes.status).toBe(200);
-    expect(getRes.body.length).toBe(1);
+    expect((getRes.body.messages || getRes.body).length).toBe(1);
 
     const replyRes = await request(app)
       .post(`/api/chat/conversations/${convId}/messages`)
       .set('Authorization', 'Bearer suspended_uid')
-      .send({ text: 'Second message' });
+      .send({ text: 'Second message', clientMessageId: crypto.randomUUID() });
 
     expect(replyRes.status).toBe(201);
     expect(replyRes.body.text).toBe('Second message');
@@ -185,7 +186,7 @@ describe('Support / Appeal Routes', () => {
     const replyRes = await request(app)
       .post(`/api/chat/conversations/${convId}/messages`)
       .set('Authorization', 'Bearer admin_uid')
-      .send({ text: 'Admin reply' });
+      .send({ text: 'Admin reply', clientMessageId: crypto.randomUUID() });
 
     expect(replyRes.status).toBe(201);
   });
@@ -234,4 +235,96 @@ describe('Support / Appeal Routes', () => {
     expect(updatedUser.accountStatus).toBe('suspended');
   });
 
+  it('18. Exact retry with same clientMessageId returns 200 without duplicate message or lastSeq increment', async () => {
+    const clientMessageId = crypto.randomUUID();
+
+    const firstRes = await request(app)
+      .post('/api/support/appeal')
+      .set('Authorization', 'Bearer suspended_uid')
+      .send({ message: 'Idempotent appeal', clientMessageId });
+
+    expect(firstRes.status).toBe(201);
+    const convId = firstRes.body.conversationId;
+
+    const convAfterFirst = await Conversation.findById(convId);
+    expect(convAfterFirst.lastSeq).toBe(1);
+
+    const retryRes = await request(app)
+      .post('/api/support/appeal')
+      .set('Authorization', 'Bearer suspended_uid')
+      .send({ message: 'Idempotent appeal', clientMessageId });
+
+    expect(retryRes.status).toBe(200);
+    expect(retryRes.body.conversationId.toString()).toBe(convId.toString());
+
+    const convAfterRetry = await Conversation.findById(convId);
+    expect(convAfterRetry.lastSeq).toBe(1);
+
+    const messages = await Message.find({ conversationId: convId });
+    expect(messages.length).toBe(1);
+    expect(messages[0].seq).toBe(1);
+    expect(messages[0].clientMessageId).toBe(clientMessageId);
+  });
+
+  it('19. Concurrent duplicate appeal requests result in exactly 1 message and 1 sequence increment', async () => {
+    // Ensure conversation exists so both concurrent requests target the same conversationId
+    const preConv = await Conversation.create({
+      participants: [suspendedUser._id, adminProfile._id],
+      isModeration: true,
+      lastSeq: 0
+    });
+
+    const clientMessageId = crypto.randomUUID();
+
+    const [res1, res2] = await Promise.all([
+      request(app)
+        .post('/api/support/appeal')
+        .set('Authorization', 'Bearer suspended_uid')
+        .send({ message: 'Concurrent appeal', clientMessageId }),
+      request(app)
+        .post('/api/support/appeal')
+        .set('Authorization', 'Bearer suspended_uid')
+        .send({ message: 'Concurrent appeal', clientMessageId })
+    ]);
+
+    const statuses = [res1.status, res2.status].sort();
+    expect(statuses).toEqual([200, 201]);
+
+    const messages = await Message.find({ conversationId: preConv._id });
+    expect(messages.length).toBe(1);
+    expect(messages[0].seq).toBe(1);
+    expect(messages[0].clientMessageId).toBe(clientMessageId);
+
+    const finalConv = await Conversation.findById(preConv._id);
+    expect(finalConv.lastSeq).toBe(1);
+  });
+
+  it('20. Reusing clientMessageId with different text returns 409 Conflict', async () => {
+    const clientMessageId = crypto.randomUUID();
+
+    const res1 = await request(app)
+      .post('/api/support/appeal')
+      .set('Authorization', 'Bearer suspended_uid')
+      .send({ message: 'First attempt', clientMessageId });
+    expect(res1.status).toBe(201);
+
+    const res2 = await request(app)
+      .post('/api/support/appeal')
+      .set('Authorization', 'Bearer suspended_uid')
+      .send({ message: 'Different attempt text', clientMessageId });
+    expect(res2.status).toBe(409);
+    expect(res2.body.message).toContain('Conflict');
+  });
+
+  it('21. Malformed clientMessageId returns 400 Bad Request', async () => {
+    const res = await request(app)
+      .post('/api/support/appeal')
+      .set('Authorization', 'Bearer suspended_uid')
+      .send({ message: 'Appeal with bad key', clientMessageId: 'not-a-uuid' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Invalid clientMessageId');
+  });
+
 });
+

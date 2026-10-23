@@ -1,8 +1,9 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
+import http from 'http';
 import connectDB from './config/db.js';
 import app from './app.js';
-
-dotenv.config();
+import { initSocket } from './config/socket.js';
+import { getAllowedOrigins } from './config/cors.js';
 
 // Connect to Database
 if (process.env.MONGODB_URI) {
@@ -13,7 +14,15 @@ if (process.env.MONGODB_URI) {
 }
 
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
-app.listen(PORT, () => {
+// Initialize Socket.IO with Express trust proxy setting and CORS allowed origins
+initSocket(server, {
+  trustProxy: app.get('trust proxy'),
+  allowedOrigins: getAllowedOrigins()
+});
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+

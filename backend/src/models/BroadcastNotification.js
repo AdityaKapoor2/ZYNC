@@ -31,8 +31,21 @@ const broadcastNotificationSchema = new mongoose.Schema({
   recipientCount: {
     type: Number,
     default: 0,
+  },
+  idempotencyKey: {
+    type: String,
+    trim: true,
+    maxlength: 128,
   }
 }, { timestamps: true });
+
+broadcastNotificationSchema.index(
+  { sender: 1, idempotencyKey: 1 },
+  { 
+    unique: true, 
+    partialFilterExpression: { idempotencyKey: { $type: 'string' } } 
+  }
+);
 
 const BroadcastNotification = mongoose.model('BroadcastNotification', broadcastNotificationSchema);
 

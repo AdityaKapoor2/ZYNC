@@ -780,5 +780,23 @@ describe('Super Admin User Management & Suspension', () => {
 
       saveSpy.mockRestore();
     });
+
+    it('57. Suspended super admin is denied privileged operation with 403 ACCOUNT_SUSPENDED', async () => {
+      await UserProfile.create({
+        firebaseUid: 'uidSuspendedAdmin',
+        displayName: 'Suspended Admin',
+        email: 'suspendedadmin@admin.com',
+        role: 'super_admin',
+        accountStatus: 'suspended'
+      });
+
+      const res = await request(app)
+        .get('/api/admin/users')
+        .set('Authorization', 'Bearer uidSuspendedAdmin');
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ACCOUNT_SUSPENDED');
+      expect(res.body.message).toBe('Account is suspended');
+    });
   });
 });

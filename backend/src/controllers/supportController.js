@@ -1,15 +1,20 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import UserProfile from '../models/UserProfile.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import Notification from '../models/Notification.js';
 import ModerationAction from '../models/ModerationAction.js';
 import SupportTicket from '../models/SupportTicket.js';
+import { getIO } from '../config/socket.js';
+import { deliverNotification } from '../services/notificationService.js';
+
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Legacy appeal endpoint — preserved for backwards compatibility and tests
 export const submitAppeal = async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, clientMessageId } = req.body;
     const { uid } = req.user;
 
     if (!message || message.trim().length === 0) {
@@ -48,27 +53,166 @@ export const submitAppeal = async (req, res) => {
       await conversation.save();
     }
 
-    const newMsg = new Message({
-      conversationId: conversation._id,
-      sender: currentUser._id,
-      senderRole: 'user',
-      senderDisplayName: currentUser.displayName || 'Suspended Player',
-      text: message.trim()
-    });
+    // Idempotency: validate client-supplied key or generate server-originated UUID v4
+    let cleanClientMessageId = null;
+    if (clientMessageId !== undefined) {
+      if (typeof clientMessageId !== 'string' || !UUID_V4_REGEX.test(clientMessageId.trim())) {
+        return res.status(400).json({ message: 'Invalid clientMessageId: must be a valid UUID v4' });
+      }
+      cleanClientMessageId = clientMessageId.trim();
 
-    await newMsg.save();
+      const existingMessage = await Message.findOne({
+        conversationId: conversation._id,
+        clientMessageId: cleanClientMessageId
+      });
 
-    conversation.lastMessage = newMsg._id;
-    conversation.lastMessageAt = newMsg.createdAt;
-    await conversation.save();
+      if (existingMessage) {
+        if (existingMessage.sender.toString() !== currentUser._id.toString()) {
+          return res.status(409).json({ message: 'Conflict: clientMessageId has already been used by another sender' });
+        }
+        if (existingMessage.text !== message.trim()) {
+          return res.status(409).json({ message: 'Conflict: clientMessageId cannot be reused with different message content' });
+        }
+        return res.status(200).json({ message: 'Appeal sent', conversationId: conversation._id, adminId: adminUser._id });
+      }
+    } else {
+      cleanClientMessageId = crypto.randomUUID();
+    }
 
-    // Create a notification for the admin
-    const notification = new Notification({
-      recipient: adminUser._id,
-      title: 'New Appeal Submitted',
-      message: `User ${currentUser.displayName || currentUser.email} has submitted a suspension appeal.`
-    });
-    await notification.save();
+    // Transactional sequence allocation and persistence
+    const session = await mongoose.startSession();
+    let committedMessage = null;
+    let committedNotification = null;
+    let duplicateResolved = null;
+
+    try {
+      await session.withTransaction(async () => {
+        const concurrentMsg = await Message.findOne({
+          conversationId: conversation._id,
+          clientMessageId: cleanClientMessageId
+        }).session(session);
+
+        if (concurrentMsg) {
+          duplicateResolved = concurrentMsg;
+          return;
+        }
+
+        const updatedConv = await Conversation.findOneAndUpdate(
+          { _id: conversation._id },
+          { $inc: { lastSeq: 1 } },
+          { session, returnDocument: 'after' }
+        );
+
+        if (!updatedConv) {
+          throw new Error('CONVERSATION_NOT_FOUND');
+        }
+
+        const allocatedSeq = updatedConv.lastSeq;
+
+        const newMsg = new Message({
+          conversationId: conversation._id,
+          sender: currentUser._id,
+          senderRole: 'user',
+          senderDisplayName: currentUser.displayName || 'Suspended Player',
+          text: message.trim(),
+          seq: allocatedSeq,
+          clientMessageId: cleanClientMessageId
+        });
+
+        await newMsg.save({ session });
+
+        const existingReadState = Array.isArray(updatedConv.readState) ? updatedConv.readState : [];
+        let userFound = false;
+        let adminFound = false;
+
+        const nextReadState = existingReadState.map(entry => {
+          if (entry.user && entry.user.toString() === currentUser._id.toString()) {
+            userFound = true;
+            return { user: entry.user, lastReadSeq: allocatedSeq };
+          }
+          if (entry.user && entry.user.toString() === adminUser._id.toString()) {
+            adminFound = true;
+            return entry;
+          }
+          return entry;
+        });
+
+        if (!userFound) {
+          nextReadState.push({ user: currentUser._id, lastReadSeq: allocatedSeq });
+        }
+        if (!adminFound) {
+          nextReadState.push({ user: adminUser._id, lastReadSeq: Math.max(0, allocatedSeq - 1) });
+        }
+
+        await Conversation.updateOne(
+          { _id: conversation._id },
+          {
+            $set: {
+              lastMessage: newMsg._id,
+              lastMessageAt: newMsg.createdAt,
+              readState: nextReadState
+            }
+          },
+          { session }
+        );
+
+        const notification = new Notification({
+          recipient: adminUser._id,
+          title: 'New Appeal Submitted',
+          message: `User ${currentUser.displayName || currentUser.email} has submitted a suspension appeal.`
+        });
+        await notification.save({ session });
+        committedNotification = notification;
+
+        committedMessage = newMsg;
+      });
+    } catch (txErr) {
+      if (txErr.code === 11000 || (txErr.message && txErr.message.includes('E11000'))) {
+        const raceMsg = await Message.findOne({
+          conversationId: conversation._id,
+          clientMessageId: cleanClientMessageId
+        });
+        if (raceMsg) {
+          duplicateResolved = raceMsg;
+        } else {
+          throw txErr;
+        }
+      } else {
+        throw txErr;
+      }
+    } finally {
+      await session.endSession();
+    }
+
+    if (duplicateResolved) {
+      if (duplicateResolved.sender.toString() !== currentUser._id.toString()) {
+        return res.status(409).json({ message: 'Conflict: clientMessageId has already been used by another sender' });
+      }
+      if (duplicateResolved.text !== message.trim()) {
+        return res.status(409).json({ message: 'Conflict: clientMessageId cannot be reused with different message content' });
+      }
+      return res.status(200).json({ message: 'Appeal sent', conversationId: conversation._id, adminId: adminUser._id });
+    }
+
+    if (!committedMessage) {
+      return res.status(500).json({ message: 'Failed to commit appeal message' });
+    }
+
+    // Post-commit realtime emission
+    const io = getIO();
+    if (io) {
+      const targetRoom = `official:${adminUser._id}`;
+      const senderRoom = `official:${currentUser._id}`;
+      const payload = committedMessage.toObject ? committedMessage.toObject() : committedMessage;
+      io.to(targetRoom).to(senderRoom).emit('chat:message', payload);
+    }
+
+    if (committedNotification) {
+      deliverNotification(committedNotification, {
+        recipientId: adminUser._id,
+        accountStatus: adminUser.accountStatus || 'active'
+      });
+    }
 
     return res.status(201).json({ message: 'Appeal sent', conversationId: conversation._id, adminId: adminUser._id });
   } catch (error) {
@@ -169,12 +313,16 @@ export const createTicket = async (req, res) => {
     await ticket.save();
 
     // Notify Super Admins of new ticket
-    const admins = await UserProfile.find({ role: 'super_admin' }).select('_id');
+    const admins = await UserProfile.find({ role: 'super_admin' }).select('_id accountStatus');
     for (const admin of admins) {
-      await Notification.create({
+      const notif = await Notification.create({
         recipient: admin._id,
         title: `New Support Ticket [${ticketNumber}]`,
         message: `${currentUser.displayName || currentUser.email} created a ${category.replace('_', ' ')} ticket: "${subject.trim().slice(0, 50)}"`
+      });
+      deliverNotification(notif, {
+        recipientId: admin._id,
+        accountStatus: admin.accountStatus || 'active'
       });
     }
 
@@ -299,10 +447,14 @@ export const replyTicket = async (req, res) => {
         ticket.status = 'in_progress';
       }
       // Notify ticket creator
-      await Notification.create({
+      const notif = await Notification.create({
         recipient: ticket.creator,
         title: `Reply to Ticket [${ticket.ticketNumber}]`,
         message: `ZYNC Support replied to "${ticket.subject.slice(0, 40)}": "${text.trim().slice(0, 60)}"`
+      });
+      deliverNotification(notif, {
+        recipientId: ticket.creator,
+        checkStatus: true
       });
     } else {
       // If user replies, transition status to open if it was waiting_on_user or resolved
@@ -312,18 +464,26 @@ export const replyTicket = async (req, res) => {
       // Notify staff (assigned staff or all admins)
       const notifyTarget = ticket.assignedStaff || null;
       if (notifyTarget) {
-        await Notification.create({
+        const notif = await Notification.create({
           recipient: notifyTarget,
           title: `New User Reply [${ticket.ticketNumber}]`,
           message: `${currentUser.displayName || 'User'} replied to ticket "${ticket.subject.slice(0, 40)}"`
         });
+        deliverNotification(notif, {
+          recipientId: notifyTarget,
+          checkStatus: true
+        });
       } else {
-        const admins = await UserProfile.find({ role: 'super_admin' }).select('_id');
+        const admins = await UserProfile.find({ role: 'super_admin' }).select('_id accountStatus');
         for (const admin of admins) {
-          await Notification.create({
+          const notif = await Notification.create({
             recipient: admin._id,
             title: `New User Reply [${ticket.ticketNumber}]`,
             message: `${currentUser.displayName || 'User'} replied to ticket "${ticket.subject.slice(0, 40)}"`
+          });
+          deliverNotification(notif, {
+            recipientId: admin._id,
+            accountStatus: admin.accountStatus || 'active'
           });
         }
       }
@@ -483,10 +643,14 @@ export const updateTicketStaffMeta = async (req, res) => {
 
     // If status changed to resolved or closed, notify user
     if (statusChanged && ['resolved', 'closed', 'waiting_on_user'].includes(ticket.status)) {
-      await Notification.create({
+      const notif = await Notification.create({
         recipient: ticket.creator,
         title: `Ticket Status Updated [${ticket.ticketNumber}]`,
         message: `Your ticket "${ticket.subject.slice(0, 40)}" status is now "${ticket.status.replace('_', ' ')}"`
+      });
+      deliverNotification(notif, {
+        recipientId: ticket.creator,
+        checkStatus: true
       });
     }
 

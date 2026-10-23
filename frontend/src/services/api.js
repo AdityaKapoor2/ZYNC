@@ -95,23 +95,73 @@ export const getPresenceStatus = async (token) => {
   return fetchWithAuth('/presence/me', token, { method: 'GET' });
 };
 
+export const setVisibilityPreference = async (token, visibilityPreference) => {
+  return fetchWithAuth('/presence/visibility', token, {
+    method: 'PUT',
+    body: JSON.stringify({ visibilityPreference }),
+  });
+};
+
 // CHAT
 export const getConversations = async (token) => {
   return fetchWithAuth('/chat/conversations', token, { method: 'GET' });
+};
+
+export const getInbox = async (token) => {
+  return fetchWithAuth('/chat/inbox', token, { method: 'GET' });
+};
+
+export const markConversationAsRead = async (token, conversationId, readSeq) => {
+  const body = (readSeq !== undefined && readSeq !== null)
+    ? JSON.stringify({ readSeq })
+    : undefined;
+  return fetchWithAuth(`/chat/conversations/${conversationId}/read`, token, {
+    method: 'POST',
+    body
+  });
 };
 
 export const getOrCreateConversation = async (token, targetUserId) => {
   return fetchWithAuth(`/chat/conversations/${targetUserId}`, token, { method: 'POST' });
 };
 
-export const getMessages = async (token, conversationId) => {
-  return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, { method: 'GET' });
+export const getMessages = async (token, conversationId, options = {}) => {
+  const params = new URLSearchParams();
+  if (options.afterSeq !== undefined && options.afterSeq !== null) {
+    params.set('afterSeq', String(options.afterSeq));
+  }
+  if (options.beforeSeq !== undefined && options.beforeSeq !== null) {
+    params.set('beforeSeq', String(options.beforeSeq));
+  }
+  if (options.limit !== undefined && options.limit !== null) {
+    params.set('limit', String(options.limit));
+  }
+  const queryString = params.toString() ? `?${params.toString()}` : '';
+  return fetchWithAuth(`/chat/conversations/${conversationId}/messages${queryString}`, token, { method: 'GET' });
 };
 
-export const sendMessage = async (token, conversationId, text, senderContext) => {
+export const sendMessage = async (token, conversationId, text, clientMessageIdOrOptions, senderContext) => {
+  let clientMessageId;
+  let context = senderContext;
+  if (typeof clientMessageIdOrOptions === 'object' && clientMessageIdOrOptions !== null) {
+    clientMessageId = clientMessageIdOrOptions.clientMessageId;
+    context = clientMessageIdOrOptions.senderContext || context;
+  } else if (typeof clientMessageIdOrOptions === 'string') {
+    if (clientMessageIdOrOptions === 'user' || clientMessageIdOrOptions === 'admin') {
+      context = clientMessageIdOrOptions;
+    } else {
+      clientMessageId = clientMessageIdOrOptions;
+    }
+  }
+
+  const body = {
+    text,
+    ...(clientMessageId ? { clientMessageId } : {}),
+    ...(context ? { senderContext: context } : {})
+  };
   return fetchWithAuth(`/chat/conversations/${conversationId}/messages`, token, {
     method: 'POST',
-    body: JSON.stringify({ text, ...(senderContext ? { senderContext } : {}) })
+    body: JSON.stringify(body)
   });
 };
 

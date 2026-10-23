@@ -19,10 +19,13 @@
     "dotenv": "^18.0.0",
     "express": "^5.2.1",
     "firebase-admin": "^14.4.0",
-    "mongoose": "^9.10.1"
+    "mongoose": "^9.10.1",
+    "proxy-addr": "^2.0.8",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.2.2",
     "vitest": "^5.0.1"
   }

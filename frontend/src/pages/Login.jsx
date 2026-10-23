@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import zyncLogo from '../assets/zync-logo.png';
 import landingBg from '../assets/landing.png';
-import { verifyAuth, getProfile, setOnlineStatus } from '../services/api';
+import { verifyAuth, getProfile } from '../services/api';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -57,12 +57,6 @@ const Login = () => {
       // Fetch user profile
       const profile = await getProfile(token);
       
-      // Auto set online status
-      try {
-        await setOnlineStatus(token);
-      } catch (err) {
-        console.error('Failed to set initial online status', err);
-      }
       
       if (profile.role === 'super_admin') {
         navigate('/admin');

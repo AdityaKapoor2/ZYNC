@@ -1,6 +1,59 @@
 import Notification from '../models/Notification.js';
 import BroadcastNotification from '../models/BroadcastNotification.js';
 import UserProfile from '../models/UserProfile.js';
+import { deliverBulkNotifications } from '../services/notificationService.js';
+
+const SUPPORTED_GAMES = ['BGMI', 'Brawl Stars', 'Valorant'];
+
+const isEquivalentBroadcast = (broadcast, { audienceType, targetGame, recipientId, title, message }) => {
+  if (broadcast.audienceType !== audienceType) return false;
+  if (broadcast.title !== title.trim()) return false;
+  if (broadcast.message !== message.trim()) return false;
+
+  if (audienceType === 'game') {
+    if (broadcast.targetGame !== targetGame) return false;
+  } else if (audienceType === 'individual') {
+    if (broadcast.targetUser?.toString() !== recipientId?.toString()) return false;
+  }
+
+  return true;
+};
+
+const isBroadcastRecipientDupError = (err) => {
+  if (!err) return false;
+
+  if (err.code === 11000) {
+    if (err.keyPattern?.broadcastId && err.keyPattern?.recipient) {
+      return true;
+    }
+    const msg = String(err.message || '');
+    if (msg.includes('broadcastId') && msg.includes('recipient')) {
+      return true;
+    }
+    if (Array.isArray(err.writeErrors) && err.writeErrors.length > 0) {
+      return err.writeErrors.every(we => 
+        we.code === 11000 && 
+        (we.keyPattern?.broadcastId || String(we.errmsg || '').includes('broadcastId'))
+      );
+    }
+  }
+
+  if (Array.isArray(err.writeErrors) && err.writeErrors.length > 0) {
+    return err.writeErrors.every(we => 
+      we.code === 11000 && 
+      (we.keyPattern?.broadcastId || String(we.errmsg || '').includes('broadcastId'))
+    );
+  }
+
+  return false;
+};
+
+const getSuccessfullyInsertedDocs = (err) => {
+  if (Array.isArray(err?.insertedDocs)) {
+    return err.insertedDocs;
+  }
+  return [];
+};
 
 export const createAdminNotification = async (req, res) => {
   try {
@@ -18,12 +71,35 @@ export const createAdminNotification = async (req, res) => {
       return res.status(400).json({ message: 'Invalid audience type' });
     }
 
+    // Validate idempotency key if provided via header or body
+    const rawKey = req.headers['idempotency-key'] ?? req.headers['x-idempotency-key'] ?? req.body.idempotencyKey;
+    let idempotencyKey = undefined;
+
+    if (rawKey !== undefined) {
+      if (typeof rawKey !== 'string') {
+        return res.status(400).json({ message: 'Invalid idempotency key format: must be a string' });
+      }
+      const trimmed = rawKey.trim();
+      if (!trimmed) {
+        return res.status(400).json({ message: 'Idempotency key cannot be empty' });
+      }
+      if (trimmed.length > 128) {
+        return res.status(400).json({ message: 'Idempotency key exceeds maximum length of 128 characters' });
+      }
+      idempotencyKey = trimmed;
+    }
+
     let query = {};
     if (audienceType === 'game') {
       if (!targetGame) {
         return res.status(400).json({ message: 'Target game is required for game audience' });
       }
-      query = { 'games.gameName': targetGame };
+      if (!SUPPORTED_GAMES.includes(targetGame)) {
+        return res.status(400).json({ 
+          message: `Invalid target game. Allowed games are: ${SUPPORTED_GAMES.join(', ')}` 
+        });
+      }
+      query = { 'games.gameName': targetGame, accountStatus: 'active' };
     } else if (audienceType === 'individual') {
       if (!recipientId) {
         return res.status(400).json({ message: 'Recipient ID is required for individual audience' });
@@ -34,13 +110,11 @@ export const createAdminNotification = async (req, res) => {
       }
       query = { _id: recipientId };
     } else if (audienceType === 'all') {
-      // Send to all active users, or all users? The prompt says: "target all active/appropriate users according to the existing account model."
-      // Let's just target everyone for now, or specifically accountStatus: 'active'. Let's say all users since suspended users also exist, but the prompt says "do not send notifications to deleted/nonexistent users". MongoDB doesn't have soft deletes, so just `{}` is fine, or `{ accountStatus: 'active' }`. Let's just do `{}`. Actually, I'll filter active.
-      query = {}; // All users
+      query = { accountStatus: 'active' }; // Eligible active users only
     }
 
     // Find recipients
-    const recipients = await UserProfile.find(query).select('_id').lean();
+    const recipients = await UserProfile.find(query).select('_id accountStatus').lean();
 
     if (recipients.length === 0) {
       return res.status(400).json({ message: 'No recipients matched the audience criteria' });
@@ -55,16 +129,115 @@ export const createAdminNotification = async (req, res) => {
       adminId = adminProfile._id;
     }
 
-    // Create Broadcast record
-    const broadcast = await BroadcastNotification.create({
-      sender: adminId,
-      audienceType,
-      targetGame: audienceType === 'game' ? targetGame : undefined,
-      targetUser: audienceType === 'individual' ? recipientId : undefined,
-      title: title.trim(),
-      message: message.trim(),
-      recipientCount: recipients.length
-    });
+    // Idempotency check: inspect existing broadcast if key provided
+    if (idempotencyKey) {
+      const existing = await BroadcastNotification.findOne({ sender: adminId, idempotencyKey });
+      if (existing) {
+        if (!isEquivalentBroadcast(existing, { audienceType, targetGame, recipientId, title, message })) {
+          return res.status(409).json({
+            message: 'Idempotency key reuse with different parameters',
+            code: 'IDEMPOTENCY_KEY_CONFLICT'
+          });
+        }
+
+        const existingNotifs = await Notification.find({ broadcastId: existing._id }).select('recipient');
+        const existingRecipientIds = new Set(existingNotifs.map(n => n.recipient.toString()));
+
+        // Inspect actual intended recipient set: only process recipients who have not yet received a notification
+        const pendingRecipients = recipients.filter(u => !existingRecipientIds.has(u._id.toString()));
+        if (pendingRecipients.length === 0) {
+          // Every intended recipient already has a notification document
+          return res.status(200).json({
+            success: true,
+            message: 'Notification sent successfully',
+            recipientCount: existing.recipientCount,
+            audienceType: existing.audienceType,
+            broadcastId: existing._id,
+            idempotent: true
+          });
+        }
+
+        const missingNotifications = pendingRecipients.map(user => ({
+          recipient: user._id,
+          broadcastId: existing._id,
+          title: title.trim(),
+          message: message.trim(),
+          read: false
+        }));
+
+        let insertedDocs = [];
+        try {
+          insertedDocs = await Notification.insertMany(missingNotifications, { ordered: false });
+        } catch (insertErr) {
+          if (isBroadcastRecipientDupError(insertErr)) {
+            // Concurrent race collision on broadcastId_1_recipient_1
+            insertedDocs = getSuccessfullyInsertedDocs(insertErr);
+          } else {
+            // Genuine unrelated database error: surface it according to existing REST conventions
+            throw insertErr;
+          }
+        }
+
+        // Deliver real-time notifications ONLY for documents actually inserted by this request
+        if (insertedDocs.length > 0) {
+          try {
+            const statusMap = new Map();
+            for (const r of pendingRecipients) {
+              statusMap.set(r._id.toString(), r.accountStatus);
+            }
+            deliverBulkNotifications(insertedDocs, statusMap);
+          } catch (deliverErr) {
+            console.error('[AdminNotification] Socket delivery failed during idempotent recovery:', deliverErr.message || deliverErr);
+          }
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'Notification sent successfully',
+          recipientCount: existing.recipientCount,
+          audienceType: existing.audienceType,
+          broadcastId: existing._id,
+          idempotent: true
+        });
+      }
+    }
+
+    // Create Broadcast record (handled with concurrency race protection)
+    let broadcast;
+    try {
+      broadcast = await BroadcastNotification.create({
+        sender: adminId,
+        audienceType,
+        targetGame: audienceType === 'game' ? targetGame : undefined,
+        targetUser: audienceType === 'individual' ? recipientId : undefined,
+        title: title.trim(),
+        message: message.trim(),
+        recipientCount: recipients.length,
+        idempotencyKey: idempotencyKey || undefined
+      });
+    } catch (createErr) {
+      if (createErr.code === 11000 && idempotencyKey) {
+        // Concurrency race: another request won the race to persist with the same key
+        const existing = await BroadcastNotification.findOne({ sender: adminId, idempotencyKey });
+        if (existing) {
+          if (!isEquivalentBroadcast(existing, { audienceType, targetGame, recipientId, title, message })) {
+            return res.status(409).json({
+              message: 'Idempotency key reuse with different parameters',
+              code: 'IDEMPOTENCY_KEY_CONFLICT'
+            });
+          }
+          return res.status(200).json({
+            success: true,
+            message: 'Notification sent successfully',
+            recipientCount: existing.recipientCount,
+            audienceType: existing.audienceType,
+            broadcastId: existing._id,
+            idempotent: true
+          });
+        }
+      }
+      throw createErr;
+    }
 
     // Create individual notifications (Bulk Insert)
     const notifications = recipients.map(user => ({
@@ -75,7 +248,29 @@ export const createAdminNotification = async (req, res) => {
       read: false
     }));
 
-    await Notification.insertMany(notifications, { ordered: false });
+    let insertedDocs = [];
+    try {
+      insertedDocs = await Notification.insertMany(notifications, { ordered: false });
+    } catch (insertErr) {
+      if (isBroadcastRecipientDupError(insertErr)) {
+        insertedDocs = getSuccessfullyInsertedDocs(insertErr);
+      } else {
+        throw insertErr;
+      }
+    }
+
+    // Deliver real-time notifications only after successful persistence for inserted docs
+    if (insertedDocs.length > 0) {
+      try {
+        const statusMap = new Map();
+        for (const r of recipients) {
+          statusMap.set(r._id.toString(), r.accountStatus);
+        }
+        deliverBulkNotifications(insertedDocs, statusMap);
+      } catch (deliverErr) {
+        console.error('[AdminNotification] Socket delivery failed:', deliverErr.message || deliverErr);
+      }
+    }
 
     return res.status(201).json({
       success: true,
