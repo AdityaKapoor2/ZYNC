@@ -426,48 +426,78 @@ export const replyTicket = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to reply to this ticket' });
     }
 
-    if (ticket.status === 'closed') {
-      return res.status(400).json({ message: 'Cannot reply to a closed ticket' });
+    if (['resolved', 'closed'].includes(ticket.status)) {
+      return res.status(400).json({
+        message: `Cannot reply to a ${ticket.status} ticket. Please reopen the ticket first.`,
+        code: 'TICKET_NOT_OPEN'
+      });
     }
 
     const senderRole = isStaff ? 'staff' : 'user';
     const senderDisplayName = isStaff ? 'ZYNC Support' : (currentUser.displayName || 'Player');
 
-    ticket.messages.push({
+    const newMessage = {
       sender: currentUser._id,
       senderRole,
       senderDisplayName,
       text: text.trim(),
       createdAt: new Date()
-    });
+    };
+
+    const updateQuery = {
+      $push: { messages: newMessage }
+    };
 
     if (isStaff) {
-      // If staff replies, transition from open/waiting_on_user to in_progress or waiting_on_user
       if (ticket.status === 'open') {
-        ticket.status = 'in_progress';
+        updateQuery.$set = { status: 'in_progress' };
       }
+    } else {
+      if (ticket.status === 'waiting_on_user') {
+        updateQuery.$set = { status: 'open' };
+      }
+    }
+
+    // Atomic update preventing race conditions with concurrent status close/resolve
+    const updatedTicket = await SupportTicket.findOneAndUpdate(
+      {
+        _id: id,
+        status: { $nin: ['resolved', 'closed'] }
+      },
+      updateQuery,
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedTicket) {
+      const freshTicket = await SupportTicket.findById(id);
+      if (freshTicket && ['resolved', 'closed'].includes(freshTicket.status)) {
+        return res.status(400).json({
+          message: `Cannot reply to a ${freshTicket.status} ticket. Please reopen the ticket first.`,
+          code: 'TICKET_NOT_OPEN'
+        });
+      }
+      return res.status(404).json({ message: 'Support ticket not found' });
+    }
+
+    if (isStaff) {
       // Notify ticket creator
       const notif = await Notification.create({
-        recipient: ticket.creator,
-        title: `Reply to Ticket [${ticket.ticketNumber}]`,
-        message: `ZYNC Support replied to "${ticket.subject.slice(0, 40)}": "${text.trim().slice(0, 60)}"`
+        recipient: updatedTicket.creator,
+        title: `Reply to Ticket [${updatedTicket.ticketNumber}]`,
+        message: `ZYNC Support replied to "${updatedTicket.subject.slice(0, 40)}": "${text.trim().slice(0, 60)}"`
       });
       deliverNotification(notif, {
-        recipientId: ticket.creator,
+        recipientId: updatedTicket.creator,
         checkStatus: true
       });
     } else {
-      // If user replies, transition status to open if it was waiting_on_user or resolved
-      if (['waiting_on_user', 'resolved'].includes(ticket.status)) {
-        ticket.status = 'open';
-      }
       // Notify staff (assigned staff or all admins)
-      const notifyTarget = ticket.assignedStaff || null;
+      const notifyTarget = updatedTicket.assignedStaff || null;
       if (notifyTarget) {
         const notif = await Notification.create({
           recipient: notifyTarget,
-          title: `New User Reply [${ticket.ticketNumber}]`,
-          message: `${currentUser.displayName || 'User'} replied to ticket "${ticket.subject.slice(0, 40)}"`
+          title: `New User Reply [${updatedTicket.ticketNumber}]`,
+          message: `${currentUser.displayName || 'User'} replied to ticket "${updatedTicket.subject.slice(0, 40)}"`
         });
         deliverNotification(notif, {
           recipientId: notifyTarget,
@@ -478,8 +508,8 @@ export const replyTicket = async (req, res) => {
         for (const admin of admins) {
           const notif = await Notification.create({
             recipient: admin._id,
-            title: `New User Reply [${ticket.ticketNumber}]`,
-            message: `${currentUser.displayName || 'User'} replied to ticket "${ticket.subject.slice(0, 40)}"`
+            title: `New User Reply [${updatedTicket.ticketNumber}]`,
+            message: `${currentUser.displayName || 'User'} replied to ticket "${updatedTicket.subject.slice(0, 40)}"`
           });
           deliverNotification(notif, {
             recipientId: admin._id,
@@ -489,14 +519,97 @@ export const replyTicket = async (req, res) => {
       }
     }
 
-    await ticket.save();
-
-    return res.status(201).json(isStaff ? ticket.toStaffDTO() : ticket.toUserDTO());
+    return res.status(201).json(isStaff ? updatedTicket.toStaffDTO() : updatedTicket.toUserDTO());
   } catch (error) {
     console.error('Error replying to ticket:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+/**
+ * POST /api/support/tickets/:id/reopen
+ * Reopen a resolved or closed ticket.
+ * Preserves ticket ID, messages, timestamps, and history.
+ */
+export const reopenTicket = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { uid } = req.user;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid ticket ID format' });
+    }
+
+    const currentUser = await UserProfile.findOne({ firebaseUid: uid });
+    if (!currentUser) return res.status(404).json({ message: 'User profile not found' });
+
+    const ticket = await SupportTicket.findById(id);
+    if (!ticket) return res.status(404).json({ message: 'Support ticket not found' });
+
+    const isStaff = currentUser.role === 'super_admin';
+    const isOwner = ticket.creator.toString() === currentUser._id.toString();
+
+    if (!isStaff && !isOwner) {
+      return res.status(403).json({ message: 'Not authorized to reopen this ticket' });
+    }
+
+    // If ticket is already open or in_progress, it does not need reopening
+    if (['open', 'in_progress'].includes(ticket.status)) {
+      return res.status(200).json(isStaff ? ticket.toStaffDTO() : ticket.toUserDTO());
+    }
+
+    // Atomic update transitioning status to open, clearing resolvedAt
+    const updatedTicket = await SupportTicket.findOneAndUpdate(
+      { _id: id },
+      {
+        $set: {
+          status: 'open',
+          resolvedAt: null
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedTicket) {
+      return res.status(404).json({ message: 'Support ticket not found' });
+    }
+
+    // Notify staff if reopened by user
+    if (!isStaff) {
+      const notifyTarget = updatedTicket.assignedStaff || null;
+      if (notifyTarget) {
+        const notif = await Notification.create({
+          recipient: notifyTarget,
+          title: `Ticket Reopened [${updatedTicket.ticketNumber}]`,
+          message: `${currentUser.displayName || 'User'} reopened ticket "${updatedTicket.subject.slice(0, 40)}"`
+        });
+        deliverNotification(notif, {
+          recipientId: notifyTarget,
+          checkStatus: true
+        });
+      } else {
+        const admins = await UserProfile.find({ role: 'super_admin' }).select('_id accountStatus');
+        for (const admin of admins) {
+          const notif = await Notification.create({
+            recipient: admin._id,
+            title: `Ticket Reopened [${updatedTicket.ticketNumber}]`,
+            message: `${currentUser.displayName || 'User'} reopened ticket "${updatedTicket.subject.slice(0, 40)}"`
+          });
+          deliverNotification(notif, {
+            recipientId: admin._id,
+            accountStatus: admin.accountStatus || 'active'
+          });
+        }
+      }
+    }
+
+    return res.status(200).json(isStaff ? updatedTicket.toStaffDTO() : updatedTicket.toUserDTO());
+  } catch (error) {
+    console.error('Error reopening ticket:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 
 // ==========================================
 // STAFF-ONLY SUPPORT TICKET CONTROLLERS

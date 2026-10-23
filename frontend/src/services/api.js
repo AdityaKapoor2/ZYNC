@@ -245,6 +245,12 @@ export const replySupportTicket = async (token, id, text) => {
   });
 };
 
+export const reopenSupportTicket = async (token, id) => {
+  return fetchWithAuth(`/support/tickets/${id}/reopen`, token, {
+    method: 'POST'
+  });
+};
+
 // STAFF SUPPORT TICKETS
 export const getStaffSupportTickets = async (token, params = {}) => {
   const query = new URLSearchParams(params).toString();

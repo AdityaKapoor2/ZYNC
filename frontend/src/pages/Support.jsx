@@ -6,7 +6,8 @@ import {
   getUserSupportTickets, 
   getSupportTicketDetails, 
   createSupportTicket, 
-  replySupportTicket 
+  replySupportTicket,
+  reopenSupportTicket
 } from '../services/api';
 
 const CATEGORIES = [
@@ -64,6 +65,7 @@ const Support = () => {
   // Reply State
   const [replyMessage, setReplyMessage] = useState('');
   const [replying, setReplying] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
 
   const fetchTickets = async () => {
@@ -171,6 +173,24 @@ const Support = () => {
       setError(err.message || 'Failed to send reply.');
     } finally {
       setReplying(false);
+    }
+  };
+
+  const handleReopenTicket = async () => {
+    if (!selectedTicket || !currentUser) return;
+    try {
+      setReopening(true);
+      setError('');
+      const token = await currentUser.getIdToken();
+      const updated = await reopenSupportTicket(token, selectedTicket._id);
+      setSelectedTicket(updated);
+      setSuccessMsg(`Ticket ${updated.ticketNumber} has been reopened.`);
+      setTickets(prev => prev.map(t => t._id === updated._id ? updated : t));
+    } catch (err) {
+      console.error('Failed to reopen ticket:', err);
+      setError(err.message || 'Failed to reopen ticket.');
+    } finally {
+      setReopening(false);
     }
   };
 
@@ -461,8 +481,32 @@ const Support = () => {
                   {/* Reply Form */}
                   <div className="p-4 border-t border-white/10 bg-[#0A0F1E]/80">
                     {selectedTicket.status === 'closed' ? (
-                      <div className="p-3 text-center text-xs text-text-secondary bg-white/5 rounded-lg border border-white/10">
-                        This ticket is closed. Please submit a new ticket if you require further assistance.
+                      <div className="p-4 text-center space-y-3 bg-white/5 rounded-lg border border-white/10">
+                        <p className="text-xs text-text-secondary">
+                          This ticket is closed. If your issue is not resolved, you can reopen it or submit a new ticket.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleReopenTicket}
+                          disabled={reopening}
+                          className="px-4 py-2 rounded-lg text-xs font-bold bg-white/10 text-white hover:bg-white/20 border border-white/20 transition-all disabled:opacity-50"
+                        >
+                          {reopening ? 'Reopening...' : 'Reopen Ticket'}
+                        </button>
+                      </div>
+                    ) : selectedTicket.status === 'resolved' ? (
+                      <div className="p-4 text-center space-y-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                        <p className="text-xs text-purple-300">
+                          This ticket has been marked as resolved. If you require further assistance with this inquiry, please reopen it.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleReopenTicket}
+                          disabled={reopening}
+                          className="px-4 py-2 rounded-lg text-xs font-extrabold bg-purple-500 text-white hover:bg-purple-600 transition-all disabled:opacity-50 shadow-lg shadow-purple-500/20"
+                        >
+                          {reopening ? 'Reopening...' : 'Reopen Ticket'}
+                        </button>
                       </div>
                     ) : (
                       <form onSubmit={handleSendReply} className="space-y-3">

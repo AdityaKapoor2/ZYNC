@@ -23,7 +23,10 @@ vi.mock('../src/middleware/authMiddleware.js', () => ({
 }));
 
 import supportRoutes from '../src/routes/supportRoutes.js';
-import { supportCreationRateLimiter } from '../src/middleware/rateLimitMiddleware.js';
+import { 
+  supportCreationRateLimiter,
+  supportMessageRateLimiter
+} from '../src/middleware/rateLimitMiddleware.js';
 
 const app = express();
 app.use(express.json());
@@ -45,6 +48,7 @@ describe('SEC-05: Rate Limiting for Support Ticket and Appeal Creation', () => {
 
   beforeEach(async () => {
     supportCreationRateLimiter.reset();
+    supportMessageRateLimiter.reset();
     await UserProfile.deleteMany({});
     await SupportTicket.deleteMany({});
     await ModerationAction.deleteMany({});
@@ -262,4 +266,129 @@ describe('SEC-05: Rate Limiting for Support Ticket and Appeal Creation', () => {
     expect(replyRes.status).toBe(201);
     expect(replyRes.body.messages).toHaveLength(2);
   });
+
+  it('6. Enforces limit of 30 support message replies per minute, returning 429 and Retry-After on 31st request', async () => {
+    const ticketRes = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ category: 'general', subject: 'Reply limit test', message: 'First message' });
+    expect(ticketRes.status).toBe(201);
+    const ticketId = ticketRes.body._id;
+
+    // Send 30 replies successfully
+    for (let i = 1; i <= 30; i++) {
+      const res = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer user_a_uid')
+        .send({ text: `Reply #${i}` });
+      expect(res.status).toBe(201);
+      expect(res.headers['x-ratelimit-remaining']).toBe(String(30 - i));
+    }
+
+    // 31st reply is blocked with 429
+    const blockedRes = await request(app)
+      .post(`/api/support/tickets/${ticketId}/reply`)
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ text: 'Reply #31 (Blocked)' });
+
+    expect(blockedRes.status).toBe(429);
+    expect(blockedRes.body.message).toContain('You are sending support messages too quickly');
+    expect(blockedRes.body).toHaveProperty('retryAfter');
+    expect(blockedRes.headers['retry-after']).toBe(String(blockedRes.body.retryAfter));
+  });
+
+  it('7. Independent message quotas: rate limiting one user on replies does not affect another user', async () => {
+    const tA = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ category: 'billing', subject: 'User A Ticket', message: 'Help A' });
+    const tB = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_b_uid')
+      .send({ category: 'billing', subject: 'User B Ticket', message: 'Help B' });
+
+    // User A exhausts 30 reply quota
+    for (let i = 0; i < 30; i++) {
+      await request(app)
+        .post(`/api/support/tickets/${tA.body._id}/reply`)
+        .set('Authorization', 'Bearer user_a_uid')
+        .send({ text: `Spam ${i}` });
+    }
+
+    // User A is blocked
+    const userABlocked = await request(app)
+      .post(`/api/support/tickets/${tA.body._id}/reply`)
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ text: 'Spam 31' });
+    expect(userABlocked.status).toBe(429);
+
+    // User B can still reply without issue
+    const userBReply = await request(app)
+      .post(`/api/support/tickets/${tB.body._id}/reply`)
+      .set('Authorization', 'Bearer user_b_uid')
+      .send({ text: 'Legitimate follow-up from User B' });
+    expect(userBReply.status).toBe(201);
+    expect(userBReply.body.messages).toHaveLength(2);
+  });
+
+  it('8. Quota independence: exhausting message reply quota does not block ticket creation within creation limit', async () => {
+    const tA = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ category: 'general', subject: 'Ticket 1', message: 'Message' });
+    expect(tA.status).toBe(201);
+
+    // Exhaust message replies (30 replies)
+    for (let i = 0; i < 30; i++) {
+      await request(app)
+        .post(`/api/support/tickets/${tA.body._id}/reply`)
+        .set('Authorization', 'Bearer user_a_uid')
+        .send({ text: `Reply ${i}` });
+    }
+
+    // Message sending is now rate-limited
+    const blockedReply = await request(app)
+      .post(`/api/support/tickets/${tA.body._id}/reply`)
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ text: 'Blocked reply' });
+    expect(blockedReply.status).toBe(429);
+
+    // But User A can still create their 2nd ticket (out of 5 allowed creation attempts)
+    const newTicketRes = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ category: 'bug_report', subject: 'Ticket 2', message: 'New problem' });
+    expect(newTicketRes.status).toBe(201);
+    expect(newTicketRes.body.subject).toBe('Ticket 2');
+  });
+
+  it('9. Rate limit rejection on reply does not corrupt or delete previously persisted messages', async () => {
+    const tA = await request(app)
+      .post('/api/support/tickets')
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ category: 'general', subject: 'Persistence check', message: 'Initial question' });
+    const ticketId = tA.body._id;
+
+    // Send 30 replies
+    for (let i = 1; i <= 30; i++) {
+      await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer user_a_uid')
+        .send({ text: `Valid reply ${i}` });
+    }
+
+    // Attempt 31 is blocked
+    const blocked = await request(app)
+      .post(`/api/support/tickets/${ticketId}/reply`)
+      .set('Authorization', 'Bearer user_a_uid')
+      .send({ text: 'Should be rejected' });
+    expect(blocked.status).toBe(429);
+
+    // Check database directly: exactly 31 messages exist (1 initial + 30 replies, 0 dropped, 0 corrupted)
+    const ticketInDb = await SupportTicket.findById(ticketId);
+    expect(ticketInDb.messages).toHaveLength(31);
+    expect(ticketInDb.messages[0].text).toBe('Initial question');
+    expect(ticketInDb.messages[30].text).toBe('Valid reply 30');
+  });
 });
+

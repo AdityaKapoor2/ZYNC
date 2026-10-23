@@ -1,13 +1,17 @@
 import express from 'express';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { verifySuperAdmin } from '../middleware/adminMiddleware.js';
-import { supportCreationRateLimiter } from '../middleware/rateLimitMiddleware.js';
+import { 
+  supportCreationRateLimiter,
+  supportMessageRateLimiter
+} from '../middleware/rateLimitMiddleware.js';
 import { 
   submitAppeal,
   createTicket,
   getUserTickets,
   getTicketDetails,
   replyTicket,
+  reopenTicket,
   getStaffTickets,
   updateTicketStaffMeta,
   addInternalNote
@@ -26,7 +30,10 @@ router.post('/appeal', supportCreationRateLimiter, submitAppeal);
 router.post('/tickets', supportCreationRateLimiter, createTicket);
 router.get('/tickets', getUserTickets);
 router.get('/tickets/:id', getTicketDetails);
-router.post('/tickets/:id/reply', replyTicket);
+router.post('/tickets/:id/reply', supportMessageRateLimiter, replyTicket);
+router.post('/tickets/:id/reopen', reopenTicket);
+router.patch('/tickets/:id/reopen', reopenTicket);
+
 
 // 3. Staff/Admin Support Ticket routes (Protected with verifySuperAdmin)
 router.get('/admin/tickets', verifySuperAdmin, getStaffTickets);

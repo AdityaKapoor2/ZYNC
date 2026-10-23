@@ -24,7 +24,10 @@ vi.mock('../src/middleware/authMiddleware.js', () => ({
 
 import supportRoutes from '../src/routes/supportRoutes.js';
 import chatRoutes from '../src/routes/chatRoutes.js';
-import { supportCreationRateLimiter } from '../src/middleware/rateLimitMiddleware.js';
+import { 
+  supportCreationRateLimiter,
+  supportMessageRateLimiter
+} from '../src/middleware/rateLimitMiddleware.js';
 
 const app = express();
 app.use(express.json());
@@ -47,6 +50,7 @@ describe('Dedicated Support Ticket System', () => {
 
   beforeEach(async () => {
     supportCreationRateLimiter.reset();
+    supportMessageRateLimiter.reset();
     await UserProfile.deleteMany({});
     await SupportTicket.deleteMany({});
     await ModerationAction.deleteMany({});
@@ -449,5 +453,195 @@ describe('Dedicated Support Ticket System', () => {
       expect(res.body.message).toContain('Search query must be a string');
     });
   });
+
+  describe('Support Ticket Status Enforcement & Reopen Policies', () => {
+    it('12. User cannot append messages to a resolved ticket without reopening first', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'billing', subject: 'Billing dispute', message: 'Double charged' });
+      const ticketId = createRes.body._id;
+
+      // Staff resolves the ticket
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'resolved', resolvedAt: new Date() });
+
+      // User attempt to reply directly without reopening must be rejected with 400
+      const replyRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer active_uid')
+        .send({ text: 'Still have an issue with this charge.' });
+
+      expect(replyRes.status).toBe(400);
+      expect(replyRes.body.message).toContain('Cannot reply to a resolved ticket');
+      expect(replyRes.body.code).toBe('TICKET_NOT_OPEN');
+
+      // Messages in DB must remain exactly 1 (initial message only)
+      const ticketInDb = await SupportTicket.findById(ticketId);
+      expect(ticketInDb.messages).toHaveLength(1);
+    });
+
+    it('13. User cannot append messages to a closed ticket without reopening first', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'general', subject: 'General inquiry', message: 'Hello' });
+      const ticketId = createRes.body._id;
+
+      // Staff closes the ticket
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'closed', resolvedAt: new Date() });
+
+      // User attempt to reply directly without reopening must be rejected with 400
+      const replyRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer active_uid')
+        .send({ text: 'Trying to reply to closed ticket' });
+
+      expect(replyRes.status).toBe(400);
+      expect(replyRes.body.message).toContain('Cannot reply to a closed ticket');
+      expect(replyRes.body.code).toBe('TICKET_NOT_OPEN');
+
+      const ticketInDb = await SupportTicket.findById(ticketId);
+      expect(ticketInDb.messages).toHaveLength(1);
+    });
+
+    it('14. User can explicitly reopen a resolved ticket, preserving ID, history, and timestamps', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'bug_report', subject: 'Crash on launch', message: 'Game crashes at startup' });
+      const ticketId = createRes.body._id;
+
+      // Staff marks resolved
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'resolved', resolvedAt: new Date() });
+
+      // User reopens the ticket
+      const reopenRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reopen`)
+        .set('Authorization', 'Bearer active_uid');
+
+      expect(reopenRes.status).toBe(200);
+      expect(reopenRes.body._id.toString()).toBe(ticketId.toString());
+      expect(reopenRes.body.status).toBe('open');
+      expect(reopenRes.body.resolvedAt).toBeNull();
+      expect(reopenRes.body.messages).toHaveLength(1);
+      expect(reopenRes.body.messages[0].text).toBe('Game crashes at startup');
+
+      // Now user can reply successfully
+      const replyRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer active_uid')
+        .send({ text: 'Still crashes after updating GPU drivers.' });
+
+      expect(replyRes.status).toBe(201);
+      expect(replyRes.body.messages).toHaveLength(2);
+      expect(replyRes.body.status).toBe('open');
+
+      // Verify staff received notification about reopening
+      const notif = await Notification.findOne({ recipient: staffUser._id, title: /Ticket Reopened/ });
+      expect(notif).not.toBeNull();
+      expect(notif.message).toContain('reopened ticket');
+    });
+
+    it('15. User can explicitly reopen a closed ticket and continue conversation', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'account_access', subject: 'Email change', message: 'Need email update' });
+      const ticketId = createRes.body._id;
+
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'closed', resolvedAt: new Date() });
+
+      const reopenRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reopen`)
+        .set('Authorization', 'Bearer active_uid');
+
+      expect(reopenRes.status).toBe(200);
+      expect(reopenRes.body.status).toBe('open');
+      expect(reopenRes.body.resolvedAt).toBeNull();
+
+      const replyRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer active_uid')
+        .send({ text: 'Reopening to confirm second verification code.' });
+
+      expect(replyRes.status).toBe(201);
+      expect(replyRes.body.messages).toHaveLength(2);
+    });
+
+    it('16. Reopening an already open ticket returns 200 without duplicating records or side effects', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'general', subject: 'Already open', message: 'Open ticket' });
+      const ticketId = createRes.body._id;
+
+      const reopenRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reopen`)
+        .set('Authorization', 'Bearer active_uid');
+
+      expect(reopenRes.status).toBe(200);
+      expect(reopenRes.body.status).toBe('open');
+    });
+
+    it('17. User cannot reopen another user\'s support ticket', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'general', subject: 'Private inquiry', message: 'Confidential' });
+      const ticketId = createRes.body._id;
+
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'resolved' });
+
+      // otherUser tries to reopen activeUser's ticket
+      const unauthRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reopen`)
+        .set('Authorization', 'Bearer other_uid');
+
+      expect(unauthRes.status).toBe(403);
+      expect(unauthRes.body.message).toContain('Not authorized to reopen this ticket');
+    });
+
+    it('18. Staff can reopen any ticket on behalf of a user', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'general', subject: 'Staff reopen test', message: 'Staff assistance' });
+      const ticketId = createRes.body._id;
+
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'resolved' });
+
+      const staffReopenRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reopen`)
+        .set('Authorization', 'Bearer staff_uid');
+
+      expect(staffReopenRes.status).toBe(200);
+      expect(staffReopenRes.body.status).toBe('open');
+    });
+
+    it('19. Concurrent reply during ticket close is safely blocked by atomic conditional update', async () => {
+      const createRes = await request(app)
+        .post('/api/support/tickets')
+        .set('Authorization', 'Bearer active_uid')
+        .send({ category: 'general', subject: 'Race test', message: 'Race test message' });
+      const ticketId = createRes.body._id;
+
+      // Close the ticket right before the atomic conditional update
+      await SupportTicket.findByIdAndUpdate(ticketId, { status: 'closed', resolvedAt: new Date() });
+
+      // Attempt to reply on the closed ticket
+      const replyRes = await request(app)
+        .post(`/api/support/tickets/${ticketId}/reply`)
+        .set('Authorization', 'Bearer active_uid')
+        .send({ text: 'Racing reply' });
+
+      expect(replyRes.status).toBe(400);
+      expect(replyRes.body.code).toBe('TICKET_NOT_OPEN');
+
+      const ticketInDb = await SupportTicket.findById(ticketId);
+      expect(ticketInDb.messages).toHaveLength(1);
+      expect(ticketInDb.status).toBe('closed');
+    });
+  });
 });
+
 

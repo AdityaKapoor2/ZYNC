@@ -126,3 +126,12 @@ export const supportCreationRateLimiter = createRateLimiter({
   message: 'Too many support requests created. Please wait before submitting another ticket or appeal.',
   keyGenerator: (req) => req.user?.uid || req.ip || 'anonymous'
 });
+
+// 8. Support ticket message/reply rate limiter: 30 replies per minute per authenticated user
+export const supportMessageRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'You are sending support messages too quickly. Please wait before replying again.',
+  keyGenerator: (req) => req.user?.uid || req.ip || 'anonymous'
+});
+
